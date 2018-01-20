@@ -4,6 +4,7 @@ var gl;
 				
 var point_light_ubo;
 var matrices_ubo;
+var cam_info_ubo;
 
 function Float32Concat(first, second)
 {
@@ -175,7 +176,8 @@ function init()
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
     // pozycja kamery
-    let cam_pos = new Float32Array([1., 0.2, 4., 1.]);
+    //let cam_pos = new Float32Array([0., 0.2, 4., 1.]);
+	let cam_pos = new Float32Array([0.0, 2.0, 3.0, 1.]);
 
     // dane o macierzy
     var mvp_matrix = mat4.create();
@@ -204,7 +206,7 @@ function init()
     gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, Float32Concat(mvp_matrix, model_matrix), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
-    var cam_info_ubo = gl.createBuffer();
+    cam_info_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, cam_pos, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
@@ -227,7 +229,6 @@ function init()
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, point_light_ubb, point_light_ubo);
-	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 }
 
 var pyr1_rot = Math.PI/0.1;
@@ -238,14 +239,6 @@ function draw()
     // wyczyszczenie ekranu
     gl.clear(gl.COLOR_BUFFER_BIT);
 	
-	var point_light_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
-	gl.bindBuffer(gl.UNIFORM_BUFFER, point_light_ubo);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
-	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
-	
-	
-	
-		
 	var projection_matrix = mat4.create();
 	var view_matrix = mat4.create();
 	var mvp_to_copy = mat4.create();
@@ -254,26 +247,49 @@ function draw()
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	var pointingAt = new Float32Array([PtX.value/10, PtY.value/10, PtZ.value/10]);
 	
+	//update pozycji światła
+	gl.bindBuffer(gl.UNIFORM_BUFFER, point_light_ubo);
+	var point_light_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
+	
+	//update pozycji kamery (tak aby światło odbijało się zawsze do niej)
+	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
+	
+	
+	
+	//rysowanie vertexów
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
 	mat4.lookAt(view_matrix, viewerAt, lookingAt, pointingAt);
 	mat4.perspective(projection_matrix, Math.PI/3.0, gl.drawingBufferWidth/gl.drawingBufferHeight, 0.01, 100);
 	mat4.multiply(mvp_to_copy, projection_matrix, view_matrix);
 
-	//FIRST PIRAMYD
+	//PIERWSZA PIRAMIDA
 	var model_matrix = mat4.create();
 	var mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
 	mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
-	//mat4.multiply(mvp_matrix, projection_matrix, view_matrix);
-    //mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
-	
 	
 	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
+	//DRUGA PIRAMIDA
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	// SECOND PIRAMYD
+	//mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
+	mat4.translate(model_matrix, model_matrix, [-2.0, 0.0, 3.0]);
+	mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
+	
+	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
+	
+	//PIRAMIDA W PUNKCIE ŚWIATŁA
 	model_matrix = mat4.create();	
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
