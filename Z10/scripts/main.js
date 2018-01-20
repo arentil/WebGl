@@ -111,21 +111,21 @@ function init()
                     0.0, 1.0, 0.0,    0.0, 0.447214, 0.894427,   0.5, 1.0,
 
 					//POINT LIGHT
-					-0.2, 0.0, -0.1,  	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.2, 0.0, -0.1,    	0.0, 0.0, 1.0,  0.5, 0.0,
+					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
 					
-					0.2, 0.0, -0.1,    	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.0, 0.0, 0.2, 		0.0, 0.0, 1.0,  0.5, 0.0,
+					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0,
 					
-					0.0, 0.0, 0.2, 		0.0, 0.0, 1.0,  0.5, 0.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, 1.0,  0.5, 0.0,
-					-0.2, 0.0, -0.1,  	0.0, 0.0, 1.0,  0.5, 0.0,
+					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
 					
-					-0.2, 0.0, -0.1,  	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.2, 0.0, -0.1,    	0.0, 0.0, 1.0,  0.5, 0.0,
-					0.0, 0.0, 0.2, 		0.0, 0.0, 1.0,  0.5, 0.0
+					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0
                     ]);
 
 
@@ -197,9 +197,8 @@ function init()
     // dane dotyczace swiatla punktowego
 	//0.0, 2.0, 2.0
 	//0.0, 1.0, 0.8
-    let point_light_data = new Float32Array([1.5, 0.5, 0.0, 32.0, 1.0, 1.0, 1.0, 1.0]);
+    let point_light_data = new Float32Array([1.5, 0.5, 0.0, 32.0, 2.0, 2.0, 2.0, 1.0]);
 	
-					
 
     // tworzenie UBO
     matrices_ubo = gl.createBuffer();
@@ -229,6 +228,18 @@ function init()
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, point_light_ubb, point_light_ubo);
+	
+	document.addEventListener('keydown', function(event)
+	{
+		if (event.keyCode == 37)
+		{
+			alert('Left was pressed');
+		}
+		else if(event.keyCode == 39)
+		{
+			alert('Right was pressed');
+		}
+	});
 }
 
 var pyr1_rot = Math.PI/0.1;
@@ -247,18 +258,17 @@ function draw()
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	var pointingAt = new Float32Array([PtX.value/10, PtY.value/10, PtZ.value/10]);
 	
-	//update pozycji światła
+	//UPDATE POZYCJI ŚWIATŁA
 	gl.bindBuffer(gl.UNIFORM_BUFFER, point_light_ubo);
 	var point_light_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
 	
-	//update pozycji kamery (tak aby światło odbijało się zawsze do niej)
+	//UPDATE POZYCJI KAMERY (tak aby światło odbijało się zawsze do niej)
 	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
 	
-	
-	
-	//rysowanie vertexów
+
+	//VERTEXY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 	
 	mat4.lookAt(view_matrix, viewerAt, lookingAt, pointingAt);
@@ -281,7 +291,6 @@ function draw()
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	//mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
 	mat4.translate(model_matrix, model_matrix, [-2.0, 0.0, 3.0]);
 	mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
 	
@@ -295,7 +304,6 @@ function draw()
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
 	mat4.translate(model_matrix, model_matrix, point_light_loc);
-	//mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
 	
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
@@ -411,32 +419,38 @@ var fs_source = "#version 300 es\n" +
 
     "void main()\n" +
     "{\n" +
+		"if (tex_coord == vec2(-1.0, -1.0))\n" +
+		"{\n" +
+			"vFragColor = vec4(1.0, 1.0, 0.0, 1.0);" +
+			"return;\n" +
+		"}\n" +
+	
     
-      "vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
-      "vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
-      
-      "vec3 surf_to_light = point_light.position_ws - position_ws;\n" +
-      "float surf_to_light_distance = length(surf_to_light);\n" +
-      "if (surf_to_light_distance < point_light.r)\n" +
-      "{\n" +
-      "vec3 L = normalize(surf_to_light);\n" +
-      "float intensity = 1.f - surf_to_light_distance/point_light.r;\n" +
-      "intensity *= intensity;\n" +
-          
-      "vec3 N = normalize(normal_ws);\n" +
-      "float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
-      "diffuse = N_dot_L * intensity * point_light.color * material.color;\n" +
-      "vec3 V = normalize(additional_data.cam_pos_ws - point_light.position_ws);\n" +
-      "vec3 R = normalize(reflect(-L, N));\n" +
-      "float spec_angle = max(dot(R, V), 0.f);\n" +
-      "specular = pow(spec_angle, material.specular_power) * point_light.color * intensity;\n" +
-      //"vec3 R = (L+V)/ normalize(L+V);\n" +
+		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
+		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
+
+		"vec3 surf_to_light = point_light.position_ws - position_ws;\n" +
+		"float surf_to_light_distance = length(surf_to_light);\n" +
+		"if (surf_to_light_distance < point_light.r)\n" +
+		"{\n" +
+		"vec3 L = normalize(surf_to_light);\n" +
+		"float intensity = 1.f - surf_to_light_distance/point_light.r;\n" +
+		"intensity *= intensity;\n" +
+
+		"vec3 N = normalize(normal_ws);\n" +
+		"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
+		"diffuse = N_dot_L * intensity * point_light.color * material.color;\n" +
+		"vec3 V = normalize(additional_data.cam_pos_ws - point_light.position_ws);\n" +
+		"vec3 R = normalize(reflect(-L, N));\n" +
+		"float spec_angle = max(dot(R, V), 0.f);\n" +
+		"specular = pow(spec_angle, material.specular_power) * point_light.color * intensity;\n" +
+		//"vec3 R = (L+V)/ normalize(L+V);\n" +
+
+		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
+		"}\n" +
 	  
-	  
-	  //"vFragColor = vec4((N + 1.)/2., 1.);\n" +
-      "}\n" +
-      "vFragColor = vec4(clamp((diffuse * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
-      
+		"vFragColor = vec4(clamp((diffuse * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		
     "}\n";
 
 main();
