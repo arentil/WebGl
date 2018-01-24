@@ -2,7 +2,8 @@
 
 var gl;
 				
-var point_light_ubo;
+var lights_ubo;
+var ambient_light_ubo;
 var matrices_ubo;
 var cam_info_ubo;
 
@@ -49,7 +50,8 @@ function init()
     var matrices_ubi = gl.getUniformBlockIndex(program, "Matrices");
     var cam_info_ubi = gl.getUniformBlockIndex(program, "CamInfo");
     var material_ubi = gl.getUniformBlockIndex(program, "Material");
-    var point_light_ubi = gl.getUniformBlockIndex(program, "PointLight");
+    var lights_ubi = gl.getUniformBlockIndex(program, "Lights");
+	var ambient_light_ubi = gl.getUniformBlockIndex(program, "AmbientLight");
 
     // przyporzadkowanie ubi do ubb
     let matrices_ubb = 0;
@@ -58,8 +60,10 @@ function init()
     gl.uniformBlockBinding(program, cam_info_ubi, cam_info_ubb);
     let material_ubb = 2;
     gl.uniformBlockBinding(program, material_ubi, material_ubb);
-    let point_light_ubb = 3;
-    gl.uniformBlockBinding(program, point_light_ubi, point_light_ubb);
+    let lights_ubb = 3;
+    gl.uniformBlockBinding(program, lights_ubi, lights_ubb);
+	let ambient_light_ubb = 4;
+    gl.uniformBlockBinding(program, ambient_light_ubi, ambient_light_ubb);
 
     // tworzenie sampler-a
     var linear_sampler = gl.createSampler();
@@ -176,47 +180,52 @@ function init()
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
     // pozycja kamery
-    //let cam_pos = new Float32Array([0., 0.2, 4., 1.]);
 	let cam_pos = new Float32Array([0.0, 2.0, 3.0, 1.]);
 
     // dane o macierzy
     var mvp_matrix = mat4.create();
     var model_matrix = mat4.create();
 	
-    //var view_matrix = mat4.create();
-    //mat4.lookAt(view_matrix, cam_pos, new Float32Array([0., 0., 0.]), new Float32Array([0., 1., 0.]));
-    //var projection_matrix = mat4.create();
-   // mat4.perspective(projection_matrix, Math.PI/4., gl.drawingBufferWidth/gl.drawingBufferHeight, 0.01, 10);
-    //mat4.multiply(mvp_matrix, projection_matrix, view_matrix);
-    //mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
-	
 
     // dane dotyczace materialu
-    let material_data = new Float32Array([1., 1., 1., 1., 256,    1.,1.,1.]);
-
-    // dane dotyczace swiatla punktowego
-	//0.0, 2.0, 2.0
-	//0.0, 1.0, 0.8
-    let point_light_data = new Float32Array([1.5, 0.5, 0.0, 32.0, 2.0, 2.0, 2.0, 1.0]);
-	
+    let material_data = new Float32Array([1., 1., 1., 1., 256, 1., 1., 1.]);
+		
+	let ambient_light_data = new Float32Array([
+		1.0, 0.0, 1.0, 1.0
+	]);
+		
+	let lights_data = new Float32Array([
+				1.5, 0.5, 0.0, 32.0, 1.0, 0.0, 1.0, 1.0,
+				1.0, 1.0, 0.0, 32.0, 0.0, 1.0, 0.0, 1.0,
+				2.0
+	]);
 
     // tworzenie UBO
     matrices_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, Float32Concat(mvp_matrix, model_matrix), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//------------------------------------
     cam_info_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, cam_pos, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//------------------------------------
     var material_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, material_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, material_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
-    point_light_ubo = gl.createBuffer();
-    gl.bindBuffer(gl.UNIFORM_BUFFER, point_light_ubo);
-    gl.bufferData(gl.UNIFORM_BUFFER, point_light_data, gl.DYNAMIC_DRAW);
+	//------------------------------------
+    lights_ubo = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, lights_ubo);
+    gl.bufferData(gl.UNIFORM_BUFFER, lights_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//------------------------------------
+	ambient_light_ubo = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ambient_light_ubo);
+    gl.bufferData(gl.UNIFORM_BUFFER, ambient_light_data, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	
 
     // ustawienia danych dla funkcji draw*
     gl.useProgram(program);
@@ -227,7 +236,8 @@ function init()
     gl.bindBufferBase(gl.UNIFORM_BUFFER, matrices_ubb, matrices_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
-    gl.bindBufferBase(gl.UNIFORM_BUFFER, point_light_ubb, point_light_ubo);
+	gl.bindBufferBase(gl.UNIFORM_BUFFER, lights_ubb, lights_ubo);
+	gl.bindBufferBase(gl.UNIFORM_BUFFER, ambient_light_ubb, ambient_light_ubo);
 	
 	document.addEventListener('keydown', function(event)
 	{
@@ -259,11 +269,11 @@ function draw()
 	var pointingAt = new Float32Array([PtX.value/10, PtY.value/10, PtZ.value/10]);
 	
 	//UPDATE POZYCJI ŚWIATŁA
-	gl.bindBuffer(gl.UNIFORM_BUFFER, point_light_ubo);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, lights_ubo);
 	var point_light_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
 	
-	//UPDATE POZYCJI KAMERY (tak aby światło odbijało się zawsze do niej)
+	//UPDATE POZYCJI KAMERY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
 	
@@ -298,6 +308,7 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
+	
 	//PIRAMIDA W PUNKCIE ŚWIATŁA
 	model_matrix = mat4.create();	
 	mvp_matrix = mat4.create();
@@ -308,6 +319,7 @@ function draw()
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 24);
+	
 	
 	
 	pyr1_rot += rotationSpeed;
@@ -361,11 +373,13 @@ var vs_source = "#version 300 es\n" +
     "out vec3 position_ws;\n" +
     "out vec3 normal_ws;\n" +
     "out vec2 tex_coord;\n" +
+	
     "layout(std140) uniform Matrices\n" +
     "{\n" +
         "mat4 mvp_matrix;\n" +
         "mat4 model_matrix;\n" +
     "} matrices;\n" +
+	
     "void main()\n" +
     "{\n" +
         "gl_Position = matrices.mvp_matrix*vec4(vertex_position, 1.f);\n" +
@@ -396,6 +410,13 @@ var fs_source = "#version 300 es\n" +
     "in vec2 tex_coord;\n" +
     "out vec4 vFragColor;\n" +
 
+	"struct Light\n" +
+	"{\n" +
+		"vec3 position_ws;\n" +
+		"float r;\n" +
+		"vec3 color;\n" +
+	"};\n" +
+	
     "uniform sampler2D color_tex;\n" +
 
     "layout(std140) uniform CamInfo\n" +
@@ -409,14 +430,18 @@ var fs_source = "#version 300 es\n" +
        "float specular_intensity;\n" +
        "float specular_power;\n" +
     "} material;\n" +
-
-    "layout(std140) uniform PointLight\n" +
+		
+    "layout(std140) uniform Lights\n" +
     "{\n" +
-       "vec3 position_ws;\n" +
-       "float r;\n" +
+       "Light light[2];\n" +
+	   "float size;\n" +
+    "}lights;\n" +
+	
+	"layout(std140) uniform AmbientLight\n" +
+    "{\n" +
        "vec3 color;\n" +
-    "} point_light;\n" +
-
+    "} ambient_light;\n" +
+	
     "void main()\n" +
     "{\n" +
 		"if (tex_coord == vec2(-1.0, -1.0))\n" +
@@ -425,31 +450,36 @@ var fs_source = "#version 300 es\n" +
 			"return;\n" +
 		"}\n" +
 	
-    
+		//for po światłach, wyniki dodać do diffuse i specular
+		
 		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
-
-		"vec3 surf_to_light = point_light.position_ws - position_ws;\n" +
-		"float surf_to_light_distance = length(surf_to_light);\n" +
-		"if (surf_to_light_distance < point_light.r)\n" +
+		
+		"for (int i = 0; i < int(lights.size); i++)\n" +
 		"{\n" +
-		"vec3 L = normalize(surf_to_light);\n" +
-		"float intensity = 1.f - surf_to_light_distance/point_light.r;\n" +
-		"intensity *= intensity;\n" +
+		
+			"vec3 surf_to_light = lights.light[i].position_ws - position_ws;\n" +
+			"float surf_to_light_distance = length(surf_to_light);\n" +
+			"if (surf_to_light_distance < lights.light[i].r)\n" +
+			"{\n" +
+			"vec3 L = normalize(surf_to_light);\n" +
+			"float intensity = 1.f - surf_to_light_distance/lights.light[i].r;\n" +
+			"intensity *= intensity;\n" +
 
-		"vec3 N = normalize(normal_ws);\n" +
-		"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
-		"diffuse = N_dot_L * intensity * point_light.color * material.color;\n" +
-		"vec3 V = normalize(additional_data.cam_pos_ws - point_light.position_ws);\n" +
-		"vec3 R = normalize(reflect(-L, N));\n" +
-		"float spec_angle = max(dot(R, V), 0.f);\n" +
-		"specular = pow(spec_angle, material.specular_power) * point_light.color * intensity;\n" +
+			"vec3 N = normalize(normal_ws);\n" +
+			"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
+			"diffuse += N_dot_L * intensity * lights.light[i].color * material.color;\n" +
+			"vec3 V = normalize(additional_data.cam_pos_ws - lights.light[i].position_ws);\n" +
+			"vec3 R = normalize(reflect(-L, N));\n" +
+			"float spec_angle = max(dot(R, V), 0.f);\n" +
+			"specular += pow(spec_angle, material.specular_power) * lights.light[i].color * intensity;\n" +
+		
+		"}\n" +
 		//"vec3 R = (L+V)/ normalize(L+V);\n" +
-
 		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
 		"}\n" +
 	  
-		"vFragColor = vec4(clamp((diffuse * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		"vFragColor = vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
 		
     "}\n";
 
