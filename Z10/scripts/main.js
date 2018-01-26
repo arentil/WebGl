@@ -1,11 +1,16 @@
 "use strict";
 
 var gl;
+let canvas;
 				
 var lights_ubo;
 var ambient_light_ubo;
 var matrices_ubo;
 var cam_info_ubo;
+var viewerAt;
+var RotationMatrix = mat4.create();
+var scrollStep = 0.5;
+var viewerAtZ = 1.0;
 
 function Float32Concat(first, second)
 {
@@ -16,12 +21,76 @@ function Float32Concat(first, second)
     return result;
 }
 
+function degToRad(degrees) 
+{
+  return degrees * Math.PI / 180;
+} 
+
+Number.prototype.clamp = function(min, max) 
+{
+  return Math.min(Math.max(this, min), max);
+}
+
+function getPlaneNormal(array)
+{
+	var p0 = vec3.fromValues(array[0], array[1], array[2]);
+	var p1 = vec3.fromValues(array[3], array[4], array[5]);
+	var p2 = vec3.fromValues(array[6], array[7], array[8]);
+	
+	var p1_p0 = vec3.create();
+	var p2_p0 = vec3.create();
+	vec3.sub(p1_p0, p1, p0);
+	vec3.sub(p2_p0, p2, p1);
+	
+	var cross = vec3.create();
+	vec3.cross(cross, p1_p0, p2_p0);
+	
+	var dist = Math.sqrt(cross[0]*cross[0] + cross[1]*cross[1] + cross[2]*cross[2]);
+		
+	var N = vec3.fromValues(cross[0]/dist, cross[1]/dist, cross[2]/dist);
+	return N;
+}
+
+function fillVerticesWithNormals(array, textureOffset)
+{	
+	var vertexSize = 3;
+	var perVertex = vertexSize + textureOffset;
+
+	var verticesCount = (array.length / perVertex);
+	var planesCount = verticesCount / 3;
+	
+	var vertices = new Float32Array(planesCount * 3 * (perVertex + 3));
+	for (var i = 0; i < planesCount; i++)
+	{
+		var step = i * perVertex * 3;
+				
+		var planeN = getPlaneNormal([
+			array[0 + step], array[1 + step], array[2 + step],
+			array[5 + step], array[6 + step], array[7 + step],
+			array[10 + step], array[11 + step], array[12 + step]
+		]);
+		
+		var planeArray = new Float32Array([
+			array[0 + step], array[1 + step], array[2 + step], planeN[0], planeN[1], planeN[2], array[3 + step], array[4 + step],
+			array[5 + step], array[6 + step], array[7 + step], planeN[0], planeN[1], planeN[2], array[8 + step], array[9 + step],
+			array[10 + step], array[11 + step], array[12 + step], planeN[0], planeN[1], planeN[2], array[13 + step], array[14 + step]
+		]);
+		
+		for (var j = 0; j < planeArray.length; j++)
+		{
+			vertices[j + (i * (perVertex + 3) * 3)] = planeArray[j];
+		}
+	}
+	
+	return vertices;
+}
+
 function init()
 {
     var m = mat4.create();
     // inicjalizacja webg2
     try {
-        let canvas = document.querySelector("#glcanvas");
+        canvas = document.querySelector("#glcanvas");
         gl = canvas.getContext("webgl2");
     }
     catch(e) {
@@ -37,6 +106,19 @@ function init()
         return;
     }
 
+	if (!('pointerLockElement' in document ||
+		'mozPointerLockElement' in document ||
+		'webkitPointerLockElement' in document))
+	{
+		console.log("Browser does not support pointer locking!");
+	}
+	else
+	{
+		document.addEventListener('pointerlockchange', changeCallback, false);
+		document.addEventListener('mozpointerlockchange', changeCallback, false);
+		document.addEventListener('webkitpointerlockchange', changeCallback, false);
+	}
+	
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     gl.clearColor(0.2, 0.2, 0.2, 1.0);
@@ -91,48 +173,46 @@ function init()
         gl.generateMipmap(gl.TEXTURE_2D);
     });
     
-    // dane o wierzcholkach
-	
-        var vertices = new Float32Array([
+    // PYRAMID VERTICES
+    var vertices = fillVerticesWithNormals([
 					//FRONT
-					-0.5, 0.0, -0.5,   0.0, 0.447214, -0.894427,   0.0, 0.0,
-					0.0, 1.0, 0.0,     0.0, 0.447214, -0.894427,   0.5, 1.0,
-                    0.5, 0.0, -0.5,    0.0, 0.447214, -0.894427,   1.0, 0.0,
+					-0.5, 0.0, -0.5,	0.0, 0.0,
+					0.0, 1.0, 0.0, 		0.5, 1.0,
+                    0.5, 0.0, -0.5,		1.0, 0.0,
 					
 					//LEFT
-					-0.5, 0.0, 0.5,   -0.894427, 0.447214, 0.0,   0.0, 0.0,
-					0.0, 1.0, 0.0,    -0.894427, 0.447214, 0.0,   0.5, 1.0,
-                    -0.5, 0.0, -0.5,  -0.894427, 0.447214, 0.0,   1.0, 0.0,
+					-0.5, 0.0, 0.5,		0.0, 0.0,
+					0.0, 1.0, 0.0,		0.5, 1.0,
+                    -0.5, 0.0, -0.5,	1.0, 0.0,
 
 					//RIGHT
-					0.5, 0.0, 0.5,   0.894427, 0.447214, 0.0,   0.0, 0.0,
-                    0.5, 0.0, -0.5,  0.894427, 0.447214, 0.0,   1.0, 0.0,
-                    0.0, 1.0, 0.0,   0.894427, 0.447214, 0.0,   0.5, 1.0,
+					0.5, 0.0, 0.5,		0.0, 0.0,
+                    0.5, 0.0, -0.5,		1.0, 0.0,
+                    0.0, 1.0, 0.0,		0.5, 1.0,
 
 					//BACK
-					-0.5, 0.0, 0.5,   0.0, 0.447214, 0.894427,   0.0, 0.0,
-                    0.5, 0.0, 0.5,    0.0, 0.447214, 0.894427,   1.0, 0.0,
-                    0.0, 1.0, 0.0,    0.0, 0.447214, 0.894427,   0.5, 1.0,
+					-0.5, 0.0, 0.5,		0.0, 0.0,
+                    0.5, 0.0, 0.5,		1.0, 0.0,
+                    0.0, 1.0, 0.0,		0.5, 1.0,
 
 					//POINT LIGHT
-					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
+					-0.2, 0.0, -0.1,	-1.0, -1.0,
+					0.0, 0.4, 0.0,		-1.0, -1.0,
+					0.2, 0.0, -0.1,		-1.0, -1.0,
 					
-					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.2, 0.0, -0.1,		-1.0, -1.0,
+					0.0, 0.4, 0.0,		-1.0, -1.0,
+					0.0, 0.0, 0.2,		-1.0, -1.0,
 					
-					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.0, 0.4, 0.0,  	0.0, 0.0, -1.0,  -1.0, -1.0,
-					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
+					0.0, 0.0, 0.2,		-1.0, -1.0,
+					0.0, 0.4, 0.0,		-1.0, -1.0,
+					-0.2, 0.0, -0.1,	-1.0, -1.0,
 					
-					-0.2, 0.0, -0.1,  	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.2, 0.0, -0.1,    	0.0, 0.0, -1.0,  -1.0, -1.0,
-					0.0, 0.0, 0.2, 		0.0, 0.0, -1.0,  -1.0, -1.0
-                    ]);
-
-
+					-0.2, 0.0, -0.1,	-1.0, -1.0,
+					0.2, 0.0, -0.1,		-1.0, -1.0,
+					0.0, 0.0, 0.2,		-1.0, -1.0
+                    ], 2);
+					
     // tworzenie VBO
     var vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -178,6 +258,10 @@ function init()
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	
+	
+	
+	//------------------------- UBO ------------------------------
 
     // pozycja kamery
 	let cam_pos = new Float32Array([0.0, 2.0, 3.0, 1.]);
@@ -191,7 +275,7 @@ function init()
     let material_data = new Float32Array([1., 1., 1., 1., 256, 1., 1., 1.]);
 		
 	let ambient_light_data = new Float32Array([
-		1.0, 0.0, 1.0, 1.0
+		1.0, 1.0, 1.0, 1.0
 	]);
 		
 	let lights_data = new Float32Array([
@@ -239,17 +323,56 @@ function init()
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, lights_ubb, lights_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, ambient_light_ubb, ambient_light_ubo);
 	
-	document.addEventListener('keydown', function(event)
+	document.getElementById("glcanvas").addEventListener("click", function(event)
 	{
-		if (event.keyCode == 37)
-		{
-			alert('Left was pressed');
-		}
-		else if(event.keyCode == 39)
-		{
-			alert('Right was pressed');
-		}
+		canvas.requestPointerLock = canvas.requestPointerLock ||
+									canvas.mozRequestPointerLock ||
+									canvas.webkitRequestPointerLock;
+		canvas.requestPointerLock();
 	});
+		
+	function changeCallback(event)
+	{
+		if (document.pointerLockElement === canvas ||
+			document.mozPointerLockElement === canvas ||
+			document.webkitPointerLockElement === canvas) 
+		{
+			document.addEventListener("mousemove", moveCallback, false);
+			document.addEventListener("wheel", mouseWheel, false);
+		}
+		else
+		{
+			document.removeEventListener("mousemove", moveCallback, false);
+			document.removeEventListener("wheel", mouseWheel, false);
+		}
+	}
+		
+	function moveCallback(event) 
+	{
+		var movementX = event.movementX ||
+						event.mozMovementX ||
+						event.webkitMovementX ||
+						0,
+			movementY = event.movementY ||
+						event.mozMovementY ||
+						event.webkitMovementY ||
+						0;
+		
+
+		var newRotationMatrix = mat4.create();
+		mat4.rotateX(newRotationMatrix, newRotationMatrix,degToRad(movementY / 10));
+		mat4.rotateY(newRotationMatrix, newRotationMatrix,degToRad(movementX / 10));
+		mat4.multiply(RotationMatrix, newRotationMatrix, RotationMatrix);
+	}
+
+	function mouseWheel(event)
+	{
+		//viewerAtZ
+		
+		
+		var wheelMoveZ = viewerAtZ + (event.deltaY > 0 ? scrollStep : -scrollStep);
+		viewerAtZ = wheelMoveZ.clamp(scrollStep, 15);
+	}
 }
 
 var pyr1_rot = Math.PI/0.1;
@@ -264,9 +387,9 @@ function draw()
 	var view_matrix = mat4.create();
 	var mvp_to_copy = mat4.create();
 	
-	var viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
+	viewerAt = new Float32Array([0, 1, viewerAtZ]);
+	//viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
-	var pointingAt = new Float32Array([PtX.value/10, PtY.value/10, PtZ.value/10]);
 	
 	//UPDATE POZYCJI ŚWIATŁA
 	gl.bindBuffer(gl.UNIFORM_BUFFER, lights_ubo);
@@ -274,14 +397,15 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
 	
 	//UPDATE POZYCJI KAMERY
-	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
+	//gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
+	//gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
 	
 
 	//VERTEXY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 	
-	mat4.lookAt(view_matrix, viewerAt, lookingAt, pointingAt);
+	mat4.lookAt(view_matrix, viewerAt, lookingAt, new Float32Array([0, 1, 0]));
+	mat4.multiply(view_matrix, view_matrix, RotationMatrix);
 	mat4.perspective(projection_matrix, Math.PI/3.0, gl.drawingBufferWidth/gl.drawingBufferHeight, 0.01, 100);
 	mat4.multiply(mvp_to_copy, projection_matrix, view_matrix);
 
@@ -462,19 +586,19 @@ var fs_source = "#version 300 es\n" +
 			"float surf_to_light_distance = length(surf_to_light);\n" +
 			"if (surf_to_light_distance < lights.light[i].r)\n" +
 			"{\n" +
-			"vec3 L = normalize(surf_to_light);\n" +
-			"float intensity = 1.f - surf_to_light_distance/lights.light[i].r;\n" +
-			"intensity *= intensity;\n" +
+				"vec3 L = normalize(surf_to_light);\n" +
+				"float intensity = 1.f - surf_to_light_distance/lights.light[i].r;\n" +
+				"intensity *= intensity;\n" +
 
-			"vec3 N = normalize(normal_ws);\n" +
-			"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
-			"diffuse += N_dot_L * intensity * lights.light[i].color * material.color;\n" +
-			"vec3 V = normalize(additional_data.cam_pos_ws - lights.light[i].position_ws);\n" +
-			"vec3 R = normalize(reflect(-L, N));\n" +
-			"float spec_angle = max(dot(R, V), 0.f);\n" +
-			"specular += pow(spec_angle, material.specular_power) * lights.light[i].color * intensity;\n" +
+				"vec3 N = normalize(normal_ws);\n" +
+				"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
+				"diffuse += N_dot_L * intensity * lights.light[i].color * material.color;\n" +
+				"vec3 V = normalize(additional_data.cam_pos_ws - lights.light[i].position_ws);\n" +
+				"vec3 R = normalize(reflect(-L, N));\n" +
+				"float spec_angle = max(dot(R, V), 0.f);\n" +
+				"specular += pow(spec_angle, material.specular_power) * lights.light[i].color * intensity;\n" +
 		
-		"}\n" +
+			"}\n" +
 		//"vec3 R = (L+V)/ normalize(L+V);\n" +
 		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
 		"}\n" +
