@@ -11,7 +11,7 @@
 		<form oninput="Lookx.value=parseInt(LookX.value)/10">
 			<text>X:</text>
 			<input type="range" name="LookX" min="-100" max="100" value="0" class="slider" id="LookX">
-			=<output name="Lookx" for="LookX">1</output>
+			=<output name="Lookx" for="LookX">0</output>
 		</form>
 		<form oninput="Looky.value=parseInt(LookY.value)/10">
 			<text>Y:</text>
@@ -27,12 +27,12 @@
 		</font>
 		
 		<font size="5">
-		<text>Point light location:</text>
+		<text>Point light location1:</text>
 		<div class="slidecontainer">
 		<form oninput="Lptx.value=parseInt(LptX.value)/10">
 			<text>X:</text>
 			<input type="range" name="LptX" min="-100" max="100" value="0" class="slider" id="LptX">
-			=<output name="Lptx" for="LptX">1</output>
+			=<output name="Lptx" for="LptX">0</output>
 		</form>
 		<form oninput="Lpty.value=parseInt(LptY.value)/10">
 			<text>Y:</text>
@@ -43,6 +43,27 @@
 			<text>Z:</text>
 			<input type="range" name="LptZ" min="-100" max="100" value="0" class="slider" id="LptZ">
 			=<output name="Lptz" for="LptZ">0</output>
+		</form>
+		</div>
+		</font>
+		
+		<font size="5">
+		<text>Point light location2:</text>
+		<div class="slidecontainer">
+		<form oninput="L2ptx.value=parseInt(L2ptX.value)/10">
+			<text>X:</text>
+			<input type="range" name="L2ptX" min="-100" max="100" value="0" class="slider" id="L2ptX">
+			=<output name="L2ptx" for="L2ptX">0</output>
+		</form>
+		<form oninput="L2pty.value=parseInt(L2ptY.value)/10">
+			<text>Y:</text>
+			<input type="range" name="L2ptY" min="-100" max="100" value="10" class="slider" id="L2ptY">
+			=<output name="L2pty" for="L2ptY">1</output>
+		</form>
+		<form oninput="L2ptz.value=parseInt(L2ptZ.value)/10">
+			<text>Z:</text>
+			<input type="range" name="L2ptZ" min="-100" max="100" value="0" class="slider" id="L2ptZ">
+			=<output name="L2ptz" for="L2ptZ">0</output>
 		</form>
 		</div>
 		</font>

@@ -279,8 +279,8 @@ function init()
 	]);
 		
 	let lights_data = new Float32Array([
-				1.5, 0.5, 0.0, 32.0, 1.0, 0.0, 1.0, 1.0,
-				1.0, 1.0, 0.0, 32.0, 0.0, 1.0, 0.0, 1.0,
+				0.5, 1.0, 0.0, 32.0, 0.0, 1.0, 0.0, 1.0,
+				-1.5, 0.7, 2.7, 32.0, 1.0, 0.0, 0.0, 1.0,
 				2.0
 	]);
 
@@ -393,8 +393,14 @@ function draw()
 	
 	//UPDATE POZYCJI ŚWIATŁA
 	gl.bindBuffer(gl.UNIFORM_BUFFER, lights_ubo);
-	var point_light_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light_loc, 0);
+	var point_light1_loc = new Float32Array([LptX.value/10, LptY.value/10, LptZ.value/10]);
+	var point_light2_loc = new Float32Array([L2ptX.value/10, L2ptY.value/10, L2ptZ.value/10]);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light1_loc, 0);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*8, point_light2_loc, 0);
+	
+	
+	
+	
 	
 	//UPDATE POZYCJI KAMERY
 	//gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
@@ -438,13 +444,22 @@ function draw()
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	mat4.translate(model_matrix, model_matrix, point_light_loc);
+	mat4.translate(model_matrix, model_matrix, point_light1_loc);
 	
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 24);
 	
+	//PIRAMIDA W PUNKCIE ŚWIATŁA
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
 	
+	mat4.translate(model_matrix, model_matrix, point_light2_loc);
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 24);
 	
 	pyr1_rot += rotationSpeed;
 	
