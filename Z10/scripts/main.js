@@ -2,7 +2,11 @@
 
 var gl;
 let canvas;
-				
+
+var lights_vao;
+var vao;
+
+
 var lights_ubo;
 var ambient_light_ubo;
 var matrices_ubo;
@@ -155,6 +159,10 @@ function init()
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_WRAP_R, gl.REPEAT);
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	
+	let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
+    let gpu_normals_attrib_location = 1;
+    let gpu_tex_coord_attrib_location = 2;
     
     // tworzenie teksutry
     var texture = gl.createTexture();
@@ -193,24 +201,7 @@ function init()
 					//BACK
 					-0.5, 0.0, 0.5,		0.0, 0.0,
                     0.5, 0.0, 0.5,		1.0, 0.0,
-                    0.0, 1.0, 0.0,		0.5, 1.0,
-
-					//POINT LIGHT
-					-0.2, 0.0, -0.1,	-1.0, -1.0,
-					0.0, 0.4, 0.0,		-1.0, -1.0,
-					0.2, 0.0, -0.1,		-1.0, -1.0,
-					
-					0.2, 0.0, -0.1,		-1.0, -1.0,
-					0.0, 0.4, 0.0,		-1.0, -1.0,
-					0.0, 0.0, 0.2,		-1.0, -1.0,
-					
-					0.0, 0.0, 0.2,		-1.0, -1.0,
-					0.0, 0.4, 0.0,		-1.0, -1.0,
-					-0.2, 0.0, -0.1,	-1.0, -1.0,
-					
-					-0.2, 0.0, -0.1,	-1.0, -1.0,
-					0.2, 0.0, -0.1,		-1.0, -1.0,
-					0.0, 0.0, 0.2,		-1.0, -1.0
+                    0.0, 1.0, 0.0,		0.5, 1.0
                     ], 2);
 					
     // tworzenie VBO
@@ -221,17 +212,10 @@ function init()
 
     // dane o indeksach
     var indices = new Uint16Array([
-	
 							0, 1, 2,
 							3, 4, 5,
 							6, 7, 8,
-							9, 10, 11,
-							
-							12, 13, 14,
-							15, 16, 17,
-							18, 19, 20,
-							21, 22, 23
-
+							9, 10, 11
 							]);
 
     // tworzenie bufora indeksow
@@ -240,12 +224,8 @@ function init()
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-    let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
-    let gpu_normals_attrib_location = 1;
-    let gpu_tex_coord_attrib_location = 2;
-
     // tworzenie VAO
-    var vao = gl.createVertexArray();
+    vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
@@ -259,7 +239,60 @@ function init()
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 	
-	
+	//----------------------- OBJECTS IN POINT_LIGHT SOURCE
+    var lights_vertices = fillVerticesWithNormals([
+					//POINT LIGHT
+					-0.2, 0.0, -0.1,	0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 0.0,
+					0.2, 0.0, -0.1,		0.0, 0.0,
+					
+					0.2, 0.0, -0.1,		0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 0.0,
+					0.0, 0.0, 0.2,		0.0, 0.0,
+					
+					0.0, 0.0, 0.2,		0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 0.0,
+					-0.2, 0.0, -0.1,	0.0, 0.0,
+					
+					-0.2, 0.0, -0.1,	0.0, 0.0,
+					0.2, 0.0, -0.1,		0.0, 0.0,
+					0.0, 0.0, 0.2,		0.0, 0.0
+                    ], 2);
+					
+    // tworzenie VBO
+    var lights_vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, lights_vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, lights_vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // dane o indeksach
+    var lights_indices = new Uint16Array([
+							0, 1, 2,
+							3, 4, 5,
+							6, 7, 8,
+							9, 10, 11
+							]);
+
+    // tworzenie bufora indeksow
+    var lights_index_buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lights_index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+    // tworzenie VAO
+    lights_vao = gl.createVertexArray();
+    gl.bindVertexArray(lights_vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, lights_vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lights_index_buffer);
+    gl.enableVertexAttribArray(gpu_positions_attrib_location);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 0);
+    gl.enableVertexAttribArray(gpu_normals_attrib_location);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 3*4);
+    gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 8*4, 6*4);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 	
 	//------------------------- UBO ------------------------------
 
@@ -275,7 +308,7 @@ function init()
     let material_data = new Float32Array([1., 1., 1., 1., 256, 1., 1., 1.]);
 		
 	let ambient_light_data = new Float32Array([
-		1.0, 1.0, 1.0, 1.0
+		0.4, 0.4, 1.0, 1.0
 	]);
 		
 	let lights_data = new Float32Array([
@@ -316,7 +349,6 @@ function init()
     gl.bindSampler(0, linear_sampler);
     gl.activeTexture(gl.TEXTURE0 +  0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.bindVertexArray(vao);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, matrices_ubb, matrices_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
@@ -325,10 +357,10 @@ function init()
 	
 	document.getElementById("glcanvas").addEventListener("click", function(event)
 	{
-		canvas.requestPointerLock = canvas.requestPointerLock ||
-									canvas.mozRequestPointerLock ||
-									canvas.webkitRequestPointerLock;
-		canvas.requestPointerLock();
+		//canvas.requestPointerLock = canvas.requestPointerLock ||
+		//							canvas.mozRequestPointerLock ||
+		//							canvas.webkitRequestPointerLock;
+		//canvas.requestPointerLock();
 	});
 		
 	function changeCallback(event)
@@ -382,13 +414,14 @@ function draw()
 {
     // wyczyszczenie ekranu
     gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.bindVertexArray(vao);
 	
 	var projection_matrix = mat4.create();
 	var view_matrix = mat4.create();
 	var mvp_to_copy = mat4.create();
 	
-	viewerAt = new Float32Array([0, 1, viewerAtZ]);
-	//viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
+	//viewerAt = new Float32Array([0, 1, viewerAtZ]);
+	viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	
 	//UPDATE POZYCJI ŚWIATŁA
@@ -398,13 +431,9 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light1_loc, 0);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*8, point_light2_loc, 0);
 	
-	
-	
-	
-	
 	//UPDATE POZYCJI KAMERY
-	//gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
-	//gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
 	
 
 	//VERTEXY
@@ -438,6 +467,7 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
+	gl.bindVertexArray(lights_vao);
 	
 	//PIRAMIDA W PUNKCIE ŚWIATŁA
 	model_matrix = mat4.create();	
@@ -448,7 +478,7 @@ function draw()
 	
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
-	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 24);
+	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
 	//PIRAMIDA W PUNKCIE ŚWIATŁA
 	model_matrix = mat4.create();	
@@ -459,7 +489,7 @@ function draw()
 	
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
-	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 24);
+	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
 	pyr1_rot += rotationSpeed;
 	
@@ -583,7 +613,7 @@ var fs_source = "#version 300 es\n" +
 	
     "void main()\n" +
     "{\n" +
-		"if (tex_coord == vec2(-1.0, -1.0))\n" +
+		"if (tex_coord == vec2(0.0, 0.0))\n" +
 		"{\n" +
 			"vFragColor = vec4(1.0, 1.0, 0.0, 1.0);" +
 			"return;\n" +
