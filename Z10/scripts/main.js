@@ -5,7 +5,12 @@ let canvas;
 
 var lights_vao;
 var vao;
+var bg_vao;
+var textures = [];
 
+var bg_texture;
+var texture;
+var material_ubo;
 
 var lights_ubo;
 var ambient_light_ubo;
@@ -15,6 +20,27 @@ var viewerAt;
 var RotationMatrix = mat4.create();
 var scrollStep = 0.5;
 var viewerAtZ = 1.0;
+
+var Direction = 
+{
+	LEFT_TO_RIGHT : 1,
+	RIGHT_TO_LEFT : 2
+};
+
+function Bullet(pos, directionEnum, xSpeed, rSpeed, baseR, r)
+{
+	this.pos = pos;
+	this.direction = directionEnum;
+	this.xSpeed = xSpeed;
+	this.rSpeed = rSpeed;
+	this.baseR = baseR;
+	this.r = r;
+};
+
+function compareNum(a, b) 
+{
+   return b - a;
+}
 
 function Float32Concat(first, second)
 {
@@ -150,6 +176,10 @@ function init()
     gl.uniformBlockBinding(program, lights_ubi, lights_ubb);
 	let ambient_light_ubb = 4;
     gl.uniformBlockBinding(program, ambient_light_ubi, ambient_light_ubb);
+	
+	let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
+    let gpu_normals_attrib_location = 1;
+    let gpu_tex_coord_attrib_location = 2;
 
     // tworzenie sampler-a
     var linear_sampler = gl.createSampler();
@@ -159,13 +189,10 @@ function init()
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_WRAP_R, gl.REPEAT);
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.samplerParameteri(linear_sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-	
-	let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
-    let gpu_normals_attrib_location = 1;
-    let gpu_tex_coord_attrib_location = 2;
     
+	
     // tworzenie teksutry
-    var texture = gl.createTexture();
+    texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     // wypelnianie tekstury jednym pikselem
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(255, 255, 255, 255));
@@ -180,7 +207,23 @@ function init()
         // tworzenie mipmap
         gl.generateMipmap(gl.TEXTURE_2D);
     });
-    
+	
+	bg_texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+    // wypelnianie tekstury jednym pikselem
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(255, 255, 255, 255));
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    // ładowanie obrazka (asynchronicznie)
+    var bg_image = new Image();
+    bg_image.src = "images/bg.png";
+    bg_image.addEventListener('load', function(){
+        gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+        // ladowanie danych z obrazka do tekstury
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bg_image);
+        // tworzenie mipmap
+        gl.generateMipmap(gl.TEXTURE_2D);
+    });
+
     // PYRAMID VERTICES
     var vertices = fillVerticesWithNormals([
 					//FRONT
@@ -201,7 +244,17 @@ function init()
 					//BACK
 					-0.5, 0.0, 0.5,		0.0, 0.0,
                     0.5, 0.0, 0.5,		1.0, 0.0,
-                    0.0, 1.0, 0.0,		0.5, 1.0
+                    0.0, 1.0, 0.0,		0.5, 1.0,
+					
+					//FLOOR
+					-0.5, 0.0, -0.5,	0.0, 0.0,
+					0.5, 0.0, -0.5,		1.0, 0.0,
+					-0.5, 0.0, 0.5,		0.0, 1.0,
+					
+					
+					-0.5, 0.0, 0.5,		0.0, 1.0,
+					0.5, 0.0, -0.5,		1.0, 0.0,
+					0.5, 0.0, 0.5,		1.0, 1.0
                     ], 2);
 					
     // tworzenie VBO
@@ -215,7 +268,9 @@ function init()
 							0, 1, 2,
 							3, 4, 5,
 							6, 7, 8,
-							9, 10, 11
+							9, 10, 11,
+							12, 13, 14,
+							15, 16, 17
 							]);
 
     // tworzenie bufora indeksow
@@ -294,6 +349,50 @@ function init()
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 	
+	//------------------------ BACKGROUND ----------------------
+	
+	var bg_vertices = fillVerticesWithNormals([
+					-10.0, 0.0, 10.0,	0.0, 0.0,
+					10.0, 0.0, 10.0,	1.0, 0.0,
+					-10.0, 0.0, -10.0,	0.0, 1.0,
+					-10.0, 0.0, -10.0,	0.0, 1.0,
+					10.0, 0.0, 10.0,	1.0, 0.0,
+					10.0, 0.0, -10.0,	1.0, 1.0
+                    ], 2);
+					
+    // tworzenie VBO
+    var bg_vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bg_vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, bg_vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // dane o indeksach
+    var bg_indices = new Uint16Array([
+							0, 1, 2,
+							3, 4, 5
+							]);
+
+    // tworzenie bufora indeksow
+    var bg_index_buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bg_index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, bg_indices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+    // tworzenie VAO
+    bg_vao = gl.createVertexArray();
+    gl.bindVertexArray(bg_vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bg_vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bg_index_buffer);
+    gl.enableVertexAttribArray(gpu_positions_attrib_location);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 0);
+    gl.enableVertexAttribArray(gpu_normals_attrib_location);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 3*4);
+    gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 8*4, 6*4);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	
 	//------------------------- UBO ------------------------------
 
     // pozycja kamery
@@ -305,10 +404,10 @@ function init()
 	
 
     // dane dotyczace materialu
-    let material_data = new Float32Array([1., 1., 1., 1., 256, 1., 1., 1.]);
+    let material_data = new Float32Array([1., 1., 1., 1., 16, 1., 1., 1.]);
 		
 	let ambient_light_data = new Float32Array([
-		0.4, 0.4, 1.0, 1.0
+		1.0, 1.0, 1.0, 1.0
 	]);
 		
 	let lights_data = new Float32Array([
@@ -328,7 +427,7 @@ function init()
     gl.bufferData(gl.UNIFORM_BUFFER, cam_pos, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
 	//------------------------------------
-    var material_ubo = gl.createBuffer();
+    material_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, material_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, material_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
@@ -346,9 +445,11 @@ function init()
 
     // ustawienia danych dla funkcji draw*
     gl.useProgram(program);
+	
     gl.bindSampler(0, linear_sampler);
-    gl.activeTexture(gl.TEXTURE0 +  0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+    //gl.activeTexture(gl.TEXTURE0);
+	//gl.bindTexture(gl.TEXTURE_2D, texture);
+	//gl.bindTexture(gl.TEXTURE_2D, bg_texture);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, matrices_ubb, matrices_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
@@ -399,29 +500,33 @@ function init()
 
 	function mouseWheel(event)
 	{
-		//viewerAtZ
-		
-		
 		var wheelMoveZ = viewerAtZ + (event.deltaY > 0 ? scrollStep : -scrollStep);
 		viewerAtZ = wheelMoveZ.clamp(scrollStep, 15);
 	}
 }
 
 var pyr1_rot = Math.PI/0.1;
-var rotationSpeed = 0.04;
+var rotationSpeed = 0.02;
+var minSpeed = 0.01;
+var maxSpeed = 0.2;
+var intensivity = 0.4;
+var baseRot = Math.PI/2;
+var bulletsToDraw = [];
 
 function draw()
 {
     // wyczyszczenie ekranu
     gl.clear(gl.COLOR_BUFFER_BIT);
 	gl.bindVertexArray(vao);
+	//gl.activeTexture(gl.TEXTURE0 + 0);
+	gl.bindTexture(gl.TEXTURE_2D, texture);
 	
 	var projection_matrix = mat4.create();
 	var view_matrix = mat4.create();
 	var mvp_to_copy = mat4.create();
 	
-	//viewerAt = new Float32Array([0, 1, viewerAtZ]);
-	viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
+	viewerAt = new Float32Array([0, 5, 20]);
+	//viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	
 	//UPDATE POZYCJI ŚWIATŁA
@@ -434,8 +539,7 @@ function draw()
 	//UPDATE POZYCJI KAMERY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
-	
-
+		
 	//VERTEXY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 	
@@ -443,33 +547,89 @@ function draw()
 	mat4.multiply(view_matrix, view_matrix, RotationMatrix);
 	mat4.perspective(projection_matrix, Math.PI/3.0, gl.drawingBufferWidth/gl.drawingBufferHeight, 0.01, 100);
 	mat4.multiply(mvp_to_copy, projection_matrix, view_matrix);
-
-	//PIERWSZA PIRAMIDA
+	
 	var model_matrix = mat4.create();
 	var mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
 	
-	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
-	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+
+
+
+	//generowanie pocisków
+	var needGenBullet = ((Math.random() + intensivity) >= 1);
+	if (needGenBullet)
+	{
+		var direction = ([Math.floor(Math.random() * 2 + 1)] == 1) ? Direction.LEFT_TO_RIGHT : Direction.RIGHT_TO_LEFT;
+		var x;
+		var xSpeed;
+		var baseR;
+		
+		if (direction == Direction.LEFT_TO_RIGHT)
+		{
+			x = -10.0;
+			xSpeed = (Math.random() * maxSpeed + minSpeed);
+			baseR = -baseRot;
+		}
+		else if (direction == Direction.RIGHT_TO_LEFT)
+		{
+			x = 10.0;
+			xSpeed = (Math.random() * -maxSpeed - minSpeed);
+			baseR = baseRot;
+		}
+		
+		var y = Math.random() * 20;
+		var z = (Math.random() * 20) - 10;
+		var rSpeed = (Math.random() * 0.1 + 0.01);
+		
+		bulletsToDraw.push(new Bullet(vec3.fromValues(x,y,z), direction, xSpeed, rSpeed, baseR, Math.PI/0.1));
+	}
 	
-	//DRUGA PIRAMIDA
-	model_matrix = mat4.create();	
-	mvp_matrix = mat4.create();
-	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	mat4.translate(model_matrix, model_matrix, [-2.0, 0.0, 3.0]);
-	mat4.rotateY(model_matrix, model_matrix, pyr1_rot);
+	var bulletsToDelete = [];
+	for (var i = 0; i < bulletsToDraw.length; i++)
+	{
+		
+		model_matrix = mat4.create();	
+		mvp_matrix = mat4.create();
+		mat4.copy(mvp_matrix, mvp_to_copy);
+		
+		var bullet = bulletsToDraw[i];
+		bullet.pos[0] += bullet.xSpeed;
+		bullet.r += bullet.rSpeed;
+		
+		mat4.translate(model_matrix, model_matrix, new Float32Array([bullet.pos[0], bullet.pos[1], bullet.pos[2]]));
+		mat4.rotateX(model_matrix, model_matrix, bullet.r);
+		mat4.rotateZ(model_matrix, model_matrix, bullet.baseR);
+		
+		
+		mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+		gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+		gl.drawElements(gl.TRIANGLES, 18, gl.UNSIGNED_SHORT, 0);
+		
+		if ((bullet.pos[0] < -10.0) || (bullet.pos[0] > 10.0))
+			{
+				bulletsToDelete.push(i);
+			}
+	}
 	
-	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
-	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
+	bulletsToDelete.sort(compareNum);
+	for (var i = 0; i < bulletsToDelete.length; i++)
+	{
+		var index = bulletsToDelete[i];
+		delete bulletsToDraw[index];
+		bulletsToDraw.splice(index, 1);	
+	}
+	
+	
+	
+	
+	//rysowanie "modeli" świateł punktowych
 	gl.bindVertexArray(lights_vao);
 	
-	//PIRAMIDA W PUNKCIE ŚWIATŁA
+	//zielony
 	model_matrix = mat4.create();	
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
@@ -480,7 +640,7 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
-	//PIRAMIDA W PUNKCIE ŚWIATŁA
+	//czerwony
 	model_matrix = mat4.create();	
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
@@ -490,6 +650,18 @@ function draw()
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
+	
+	//BACKGROUND
+	gl.bindVertexArray(bg_vao);
+	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 	
 	pyr1_rot += rotationSpeed;
 	
@@ -618,9 +790,7 @@ var fs_source = "#version 300 es\n" +
 			"vFragColor = vec4(1.0, 1.0, 0.0, 1.0);" +
 			"return;\n" +
 		"}\n" +
-	
-		//for po światłach, wyniki dodać do diffuse i specular
-		
+			
 		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
 		
@@ -649,7 +819,6 @@ var fs_source = "#version 300 es\n" +
 		"}\n" +
 	  
 		"vFragColor = vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
-		
     "}\n";
 
 main();
