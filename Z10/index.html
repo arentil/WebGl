@@ -49,6 +49,37 @@
 						</form>
 					</div>
 				</td>
+				
+				<td>
+					<div class="slidecontainer">
+						<text>Spot light:</text>
+						<form oninput="Spotx.value=parseInt(SpotX.value)/100">
+							<text>R:</text>
+							<input type="range" name="SpotX" min="0" max="100" value="0" class="slider" id="SpotX">
+							=<output name="Spotx" for="SpotX">0</output>
+						</form>
+						<form oninput="Spoty.value=parseInt(SpotY.value)/100">
+							<text>G:</text>
+							<input type="range" name="SpotY" min="0" max="100" value="0" class="slider" id="SpotY">
+							=<output name="Spoty" for="SpotY">0</output>
+						</form>
+						<form oninput="Spotz.value=parseInt(SpotZ.value)/100">
+							<text>B:</text>
+							<input type="range" name="SpotZ" min="0" max="100" value="0" class="slider" id="SpotZ">
+							=<output name="Spotz" for="SpotZ">0</output>
+						</form>
+						<form oninput="Spotr.value=parseInt(SpotR.value)/1000">
+							<text>R:</text>
+							<input type="range" name="SpotR" min="0" max="1000" value="0" class="slider" id="SpotR">
+							=<output name="Spotr" for="SpotR">0</output>
+						</form>
+						<form oninput="Spotl.value=parseInt(SpotL.value)">
+							<text>L:</text>
+							<input type="range" name="SpotL" min="0" max="100" value="0" class="slider" id="SpotL">
+							=<output name="Spotl" for="SpotL">0</output>
+						</form>
+					</div>
+				</td>
 			</tr>
 			
 			<tr>

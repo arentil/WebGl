@@ -11,6 +11,7 @@ var textures = [];
 var bg_texture;
 var texture;
 var material_ubo;
+var spot_light_ubo;
 
 var lights_ubo;
 var ambient_light_ubo;
@@ -372,7 +373,7 @@ function init()
     // dane o indeksach
     var bg_indices = new Uint16Array([
 							0, 1, 2,
-							3, 4, 5
+							2, 1, 5
 							]);
 
     // tworzenie bufora indeksow
@@ -420,7 +421,7 @@ function init()
 	]);
 	
 	let spot_light_data = new Float32Array([
-			0.0, 0.0, 0.0, Math.cos(90.0)
+			1.0, 1.0, 1.0, Math.cos(0.60), 0.0, 0.0, -1.0, 1.0
 	]);
 
     // tworzenie UBO
@@ -449,7 +450,7 @@ function init()
     gl.bufferData(gl.UNIFORM_BUFFER, ambient_light_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
 	//-------------------------------------
-	var spot_light_ubo = gl.createBuffer();
+	spot_light_ubo = gl.createBuffer();
     gl.bindBuffer(gl.UNIFORM_BUFFER, spot_light_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, spot_light_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
@@ -548,11 +549,16 @@ function draw()
 	var point_light2_loc = new Float32Array([L2ptX.value/10, L2ptY.value/10, L2ptZ.value/10]);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, point_light1_loc, 0);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*8, point_light2_loc, 0);
+
+	//UPDATE POZYCJI REFLEKTORA
+	gl.bindBuffer(gl.UNIFORM_BUFFER, spot_light_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([SpotX.value/100, SpotY.value/100, SpotZ.value/100, SpotR.value/1000]), 0);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*7, new Float32Array([SpotL.value]), 0);
 	
 	//UPDATE POZYCJI KAMERY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, viewerAt, 0);
-		
+
 	//VERTEXY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 	
@@ -854,8 +860,10 @@ var fs_source = "#version 300 es\n" +
 	
 	"layout(std140) uniform SpotLight\n" +
     "{\n" +
-       "vec3 direction;\n" +
+		"vec3 color;\n" +
 	   "float limit;\n" +
+	   "vec3 direction;\n" +
+	   "float shiness;\n" +
     "} spot_light;\n" +
 	
     "void main()\n" +
@@ -868,15 +876,14 @@ var fs_source = "#version 300 es\n" +
 			
 		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
-		
 		"vec3 N = normalize(normal_ws);\n" +
 
-		
-		"float light = 0.0;\n" +
-		
 		"vec3 surfToLight = normalize(additional_data.cam_pos_ws - position_ws);\n" +
 		"vec3 surfToView = normalize(additional_data.cam_pos_ws - position_ws);\n" +
 		"vec3 halfVector = normalize(surfToLight + surfToView);\n" +
+		
+		"float spot_spec = 0.0;\n" +
+		"float light = 0.0;\n" +
 		
 		"float dotFromDirection = dot(surfToLight, -spot_light.direction);\n" +
 		"if (dotFromDirection >= spot_light.limit)\n" +
@@ -884,11 +891,13 @@ var fs_source = "#version 300 es\n" +
 			"light = dot(N, surfToLight);\n" +
 			"if (light > 0.0)\n" +
 			"{\n" +
-				"specular += vec3(0.0, 0.0, 1.0) * pow(dot(N, halfVector), 200.0);\n" +
+				"spot_spec = pow(dot(N, halfVector), spot_light.shiness);\n" +
 			"}\n" +
 		"}\n" +
 		
-		
+		"vFragColor = vec4(spot_light.color, 1.0);\n" +
+		"vFragColor *= light;\n" +
+		"vFragColor *= spot_spec;\n" +
 		
 		"for (int i = 0; i < int(lights.size); i++)\n" +
 		"{\n" +
@@ -916,7 +925,7 @@ var fs_source = "#version 300 es\n" +
 		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
 		"}\n" +
 	  
-		"vFragColor = vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
     "}\n";
 
 main();
