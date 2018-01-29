@@ -164,6 +164,7 @@ function init()
     var material_ubi = gl.getUniformBlockIndex(program, "Material");
     var lights_ubi = gl.getUniformBlockIndex(program, "Lights");
 	var ambient_light_ubi = gl.getUniformBlockIndex(program, "AmbientLight");
+	var spot_light_ubi = gl.getUniformBlockIndex(program, "SpotLight");
 
     // przyporzadkowanie ubi do ubb
     let matrices_ubb = 0;
@@ -176,6 +177,8 @@ function init()
     gl.uniformBlockBinding(program, lights_ubi, lights_ubb);
 	let ambient_light_ubb = 4;
     gl.uniformBlockBinding(program, ambient_light_ubi, ambient_light_ubb);
+	let spot_light_ubb = 5;
+    gl.uniformBlockBinding(program, spot_light_ubi, spot_light_ubb);
 	
 	let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
     let gpu_normals_attrib_location = 1;
@@ -407,13 +410,17 @@ function init()
     let material_data = new Float32Array([1., 1., 1., 1., 16, 1., 1., 1.]);
 		
 	let ambient_light_data = new Float32Array([
-		1.0, 1.0, 1.0, 1.0
+		0.4, 0.4, 0.4, 1.0
 	]);
 		
 	let lights_data = new Float32Array([
 				0.5, 1.0, 0.0, 32.0, 0.0, 1.0, 0.0, 1.0,
 				-1.5, 0.7, 2.7, 32.0, 1.0, 0.0, 0.0, 1.0,
 				2.0
+	]);
+	
+	let spot_light_data = new Float32Array([
+			0.0, 0.0, 0.0, Math.cos(90.0)
 	]);
 
     // tworzenie UBO
@@ -441,6 +448,11 @@ function init()
     gl.bindBuffer(gl.UNIFORM_BUFFER, ambient_light_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, ambient_light_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//-------------------------------------
+	var spot_light_ubo = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, spot_light_ubo);
+    gl.bufferData(gl.UNIFORM_BUFFER, spot_light_data, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
 	
 
     // ustawienia danych dla funkcji draw*
@@ -455,6 +467,7 @@ function init()
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, lights_ubb, lights_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, ambient_light_ubb, ambient_light_ubo);
+	gl.bindBufferBase(gl.UNIFORM_BUFFER, spot_light_ubb, spot_light_ubo);
 	
 	document.getElementById("glcanvas").addEventListener("click", function(event)
 	{
@@ -526,7 +539,7 @@ function draw()
 	var mvp_to_copy = mat4.create();
 	
 	viewerAt = new Float32Array([0, 5, 20]);
-	//viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
+	viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	
 	//UPDATE POZYCJI ŚWIATŁA
@@ -568,13 +581,13 @@ function draw()
 		
 		if (direction == Direction.LEFT_TO_RIGHT)
 		{
-			x = -10.0;
+			x = -11.0;
 			xSpeed = (Math.random() * maxSpeed + minSpeed);
 			baseR = -baseRot;
 		}
 		else if (direction == Direction.RIGHT_TO_LEFT)
 		{
-			x = 10.0;
+			x = 11.0;
 			xSpeed = (Math.random() * -maxSpeed - minSpeed);
 			baseR = baseRot;
 		}
@@ -586,7 +599,7 @@ function draw()
 		bulletsToDraw.push(new Bullet(vec3.fromValues(x,y,z), direction, xSpeed, rSpeed, baseR, Math.PI/0.1));
 	}
 	
-	
+	//rysowanie pocisków
 	var bulletsToDelete = [];
 	for (var i = 0; i < bulletsToDraw.length; i++)
 	{
@@ -608,13 +621,13 @@ function draw()
 		gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 		gl.drawElements(gl.TRIANGLES, 18, gl.UNSIGNED_SHORT, 0);
 		
-		if ((bullet.pos[0] < -10.0) || (bullet.pos[0] > 10.0))
+		if ((bullet.pos[0] < -11.0) || (bullet.pos[0] > 11.0))
 			{
 				bulletsToDelete.push(i);
 			}
 	}
 	
-	
+	//usuwanie pocisków poza limitem
 	bulletsToDelete.sort(compareNum);
 	for (var i = 0; i < bulletsToDelete.length; i++)
 	{
@@ -623,9 +636,7 @@ function draw()
 		bulletsToDraw.splice(index, 1);	
 	}
 	
-	
-	
-	
+
 	//rysowanie "modeli" świateł punktowych
 	gl.bindVertexArray(lights_vao);
 	
@@ -651,13 +662,71 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
-	//BACKGROUND
+	//BACKGROUND floor
 	gl.bindVertexArray(bg_vao);
 	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
 	
 	model_matrix = mat4.create();	
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+	
+	//BACKGROUND backwall
+	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	//mat4.translate(model_matrix, model_matrix, new Float32Array(0.0, 0.0, -10.0));
+	mat4.translate(model_matrix, model_matrix, new Float32Array([0.0, 10.0, -10.0]));
+	mat4.rotateX(model_matrix, model_matrix, degToRad(90));
+	
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+	
+	//BACKGROUND leftwall
+	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.rotateZ(model_matrix, model_matrix, degToRad(-90));
+	mat4.translate(model_matrix, model_matrix, new Float32Array([-10.0, -10.0, 0.0]));
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+	
+	//BACKGROUND rightwal
+	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.rotateZ(model_matrix, model_matrix, degToRad(90));
+	mat4.translate(model_matrix, model_matrix, new Float32Array([10.0, -10.0, 0.0]));
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+	
+	//BACKGROUND ceil
+	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.rotateX(model_matrix, model_matrix, degToRad(180));
+	mat4.translate(model_matrix, model_matrix, new Float32Array([0.0, -20.0, 0.0]));
 	
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
@@ -783,6 +852,12 @@ var fs_source = "#version 300 es\n" +
        "vec3 color;\n" +
     "} ambient_light;\n" +
 	
+	"layout(std140) uniform SpotLight\n" +
+    "{\n" +
+       "vec3 direction;\n" +
+	   "float limit;\n" +
+    "} spot_light;\n" +
+	
     "void main()\n" +
     "{\n" +
 		"if (tex_coord == vec2(0.0, 0.0))\n" +
@@ -794,25 +869,48 @@ var fs_source = "#version 300 es\n" +
 		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
 		
+		"vec3 N = normalize(normal_ws);\n" +
+
+		
+		"float light = 0.0;\n" +
+		
+		"vec3 surfToLight = normalize(additional_data.cam_pos_ws - position_ws);\n" +
+		"vec3 surfToView = normalize(additional_data.cam_pos_ws - position_ws);\n" +
+		"vec3 halfVector = normalize(surfToLight + surfToView);\n" +
+		
+		"float dotFromDirection = dot(surfToLight, -spot_light.direction);\n" +
+		"if (dotFromDirection >= spot_light.limit)\n" +
+		"{\n" +
+			"light = dot(N, surfToLight);\n" +
+			"if (light > 0.0)\n" +
+			"{\n" +
+				"specular += vec3(0.0, 0.0, 1.0) * pow(dot(N, halfVector), 200.0);\n" +
+			"}\n" +
+		"}\n" +
+		
+		
+		
 		"for (int i = 0; i < int(lights.size); i++)\n" +
 		"{\n" +
 		
 			"vec3 surf_to_light = lights.light[i].position_ws - position_ws;\n" +
 			"float surf_to_light_distance = length(surf_to_light);\n" +
+
 			"if (surf_to_light_distance < lights.light[i].r)\n" +
 			"{\n" +
-				"vec3 L = normalize(surf_to_light);\n" +
+				
 				"float intensity = 1.f - surf_to_light_distance/lights.light[i].r;\n" +
 				"intensity *= intensity;\n" +
-
-				"vec3 N = normalize(normal_ws);\n" +
+				"vec3 L = normalize(surf_to_light);\n" +
 				"float N_dot_L = clamp(dot(N,L), 0.f, 1.f);\n" +
+				
 				"diffuse += N_dot_L * intensity * lights.light[i].color * material.color;\n" +
 				"vec3 V = normalize(additional_data.cam_pos_ws - lights.light[i].position_ws);\n" +
 				"vec3 R = normalize(reflect(-L, N));\n" +
 				"float spec_angle = max(dot(R, V), 0.f);\n" +
 				"specular += pow(spec_angle, material.specular_power) * lights.light[i].color * intensity;\n" +
 		
+
 			"}\n" +
 		//"vec3 R = (L+V)/ normalize(L+V);\n" +
 		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
