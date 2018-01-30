@@ -593,7 +593,7 @@ function init()
 	]);
 	
 	let spot_light_data = new Float32Array([
-			1.0, 1.0, 1.0, Math.cos(0.60), 0.0, 0.0, -1.0, 1.0
+			1.0, 1.0, 1.0, 1.0,		 0.0, 0.0, -1.0, 	1.0, 1.0
 	]);
 	
 	let need_texture_data = new Float32Array([
@@ -740,8 +740,8 @@ function draw()
 
 	//UPDATE POZYCJI REFLEKTORA
 	gl.bindBuffer(gl.UNIFORM_BUFFER, spot_light_ubo);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([SpotX.value/100, SpotY.value/100, SpotZ.value/100, SpotR.value/1000]), 0);
-	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*7, new Float32Array([SpotL.value]), 0);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([SpotX.value/100, SpotY.value/100, SpotZ.value/100,  SpotShine.value]), 0);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 4*7, new Float32Array([SpotInn.value/100, SpotOut.value/100]), 0);
 	
 	//UPDATE POZYCJI KAMERY
 	gl.bindBuffer(gl.UNIFORM_BUFFER, cam_info_ubo);
@@ -1156,9 +1156,10 @@ var fs_source = "#version 300 es\n" +
 	"layout(std140) uniform SpotLight\n" +
     "{\n" +
 		"vec3 color;\n" +
-	   "float limit;\n" +
-	   "vec3 direction;\n" +
-	   "float shiness;\n" +
+		"float shiness;\n" +
+		"vec3 direction;\n" +
+		"float innerLimit;\n" +
+		"float outerLimit;\n" +
     "} spot_light;\n" +
 	
 	"layout(std140) uniform NeedTexture\n" +
@@ -1184,22 +1185,14 @@ var fs_source = "#version 300 es\n" +
 		"vec3 surfToView = normalize(additional_data.cam_pos_ws - position_ws);\n" +
 		"vec3 halfVector = normalize(surfToLight + surfToView);\n" +
 		
-		"float spot_spec = 0.0;\n" +
-		"float light = 0.0;\n" +
-		
 		"float dotFromDirection = dot(surfToLight, -spot_light.direction);\n" +
-		"if (dotFromDirection >= spot_light.limit)\n" +
-		"{\n" +
-			"light = dot(N, surfToLight);\n" +
-			"if (light > 0.0)\n" +
-			"{\n" +
-				"spot_spec = pow(dot(N, halfVector), spot_light.shiness);\n" +
-			"}\n" +
-		"}\n" +
+		"float inLight = smoothstep(spot_light.outerLimit, spot_light.innerLimit, dotFromDirection);\n" +
+		"float light = inLight * dot(N, surfToLight);\n" +
+		"float spot_spec = inLight * pow(dot(N, halfVector), spot_light.shiness);\n" +
 		
 		"vFragColor = vec4(spot_light.color, 1.0);\n" +
 		"vFragColor *= light;\n" +
-		"vFragColor *= spot_spec;\n" +
+		"vFragColor += spot_spec;\n" +
 		
 		//"light = dot(N, normalize(direct_light.reverseLightDirection));\n" +
 		//"vFragColor *= light;\n" +
