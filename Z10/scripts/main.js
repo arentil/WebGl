@@ -601,7 +601,7 @@ function init()
 	]);
 	
 	let direct_light_data = new Float32Array([
-				0.0, -10.0, 0.0, -1.0
+				0.0, 10.0, 0.0, 	-1.0,	 0.5, 0.5, 0.5,	 	0.0
 	]);
 
     // tworzenie UBO
@@ -1173,6 +1173,7 @@ var fs_source = "#version 300 es\n" +
 	"layout(std140) uniform DirectLight\n" +
     "{\n" +
 		"vec3 reverseLightDirection;" +
+		"vec3 color;" +
     "} direct_light;\n" +
 	
     "void main()\n" +
@@ -1193,10 +1194,7 @@ var fs_source = "#version 300 es\n" +
 		"vFragColor = vec4(spot_light.color, 1.0);\n" +
 		"vFragColor *= light;\n" +
 		"vFragColor += spot_spec;\n" +
-		
-		//"light = dot(N, normalize(direct_light.reverseLightDirection));\n" +
-		//"vFragColor *= light;\n" +
-		
+
 		"for (int i = 0; i < int(lights.size); i++)\n" +
 		"{\n" +
 		
@@ -1237,6 +1235,10 @@ var fs_source = "#version 300 es\n" +
 			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * need_texture.color.rgb + specular), 0.f, 1.f), 1.f);\n" +
 		"else\n" +
 			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * vec3(tex_coord, b_color).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		
+		"light = dot(N, normalize(direct_light.reverseLightDirection));\n" +
+		"vFragColor += light * vec4(direct_light.color, 1.0);\n" +
+		
     "}\n";
 
 main();
