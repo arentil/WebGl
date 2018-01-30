@@ -7,12 +7,22 @@ var lights_vao;
 var vao;
 var bg_vao;
 var textures = [];
+var obj_pig_vao;
+var obj_pig_indices_length;
+var obj_robot_indices_length;
+var obj_bullet_indices_length;
+var obj_bullet_vao;
+var obj_robot_vao;
+
+var bullet_texture;
 
 var bg_texture;
 var texture;
 var material_ubo;
 var spot_light_ubo;
+var need_texture_ubo;
 
+var direct_light_ubo;
 var lights_ubo;
 var ambient_light_ubo;
 var matrices_ubo;
@@ -97,14 +107,14 @@ function fillVerticesWithNormals(array, textureOffset)
 				
 		var planeN = getPlaneNormal([
 			array[0 + step], array[1 + step], array[2 + step],
-			array[5 + step], array[6 + step], array[7 + step],
-			array[10 + step], array[11 + step], array[12 + step]
+			array[6 + step], array[7 + step], array[8 + step],
+			array[12 + step], array[13 + step], array[14 + step]
 		]);
 		
 		var planeArray = new Float32Array([
-			array[0 + step], array[1 + step], array[2 + step], planeN[0], planeN[1], planeN[2], array[3 + step], array[4 + step],
-			array[5 + step], array[6 + step], array[7 + step], planeN[0], planeN[1], planeN[2], array[8 + step], array[9 + step],
-			array[10 + step], array[11 + step], array[12 + step], planeN[0], planeN[1], planeN[2], array[13 + step], array[14 + step]
+			array[0 + step], array[1 + step], array[2 + step], planeN[0], planeN[1], planeN[2], array[3 + step], array[4 + step], array[5 + step],
+			array[6 + step], array[7 + step], array[8 + step], planeN[0], planeN[1], planeN[2], array[9 + step], array[10 + step], array[11 + step],
+			array[12 + step], array[13 + step], array[14 + step], planeN[0], planeN[1], planeN[2], array[15 + step], array[16 + step], array[17 + step]
 		]);
 		
 		for (var j = 0; j < planeArray.length; j++)
@@ -112,8 +122,21 @@ function fillVerticesWithNormals(array, textureOffset)
 			vertices[j + (i * (perVertex + 3) * 3)] = planeArray[j];
 		}
 	}
-	
 	return vertices;
+}
+
+function parseObjMeshToFloat32(obj_mesh)
+{
+	var parsedObjMesh = [];
+	
+	for (var i = 0; i < obj_mesh.vertices.length; i+=3)
+	{
+		parsedObjMesh.push(obj_mesh.vertices[i], obj_mesh.vertices[i+1], obj_mesh.vertices[i+2]);
+		parsedObjMesh.push(obj_mesh.vertexNormals[i] ,obj_mesh.vertexNormals[i+1], obj_mesh.vertexNormals[i+2]);
+		parsedObjMesh.push(obj_mesh.textures[i], obj_mesh.textures[i+1], 0.0);
+	}
+	
+	return new Float32Array(parsedObjMesh);
 }
 
 function init()
@@ -150,6 +173,7 @@ function init()
 		document.addEventListener('webkitpointerlockchange', changeCallback, false);
 	}
 	
+	
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     gl.clearColor(0.2, 0.2, 0.2, 1.0);
@@ -166,6 +190,8 @@ function init()
     var lights_ubi = gl.getUniformBlockIndex(program, "Lights");
 	var ambient_light_ubi = gl.getUniformBlockIndex(program, "AmbientLight");
 	var spot_light_ubi = gl.getUniformBlockIndex(program, "SpotLight");
+	var need_texture_ubi = gl.getUniformBlockIndex(program, "NeedTexture");
+	var direct_light_ubi = gl.getUniformBlockIndex(program, "DirectLight");
 
     // przyporzadkowanie ubi do ubb
     let matrices_ubb = 0;
@@ -180,10 +206,15 @@ function init()
     gl.uniformBlockBinding(program, ambient_light_ubi, ambient_light_ubb);
 	let spot_light_ubb = 5;
     gl.uniformBlockBinding(program, spot_light_ubi, spot_light_ubb);
+	let need_texture_ubb = 6;
+    gl.uniformBlockBinding(program, need_texture_ubi, need_texture_ubb);
+	let direct_light_ubb = 7;
+    gl.uniformBlockBinding(program, direct_light_ubi, direct_light_ubb);
 	
 	let gpu_positions_attrib_location = 0; // musi być taka sama jak po stronie GPU!!!
     let gpu_normals_attrib_location = 1;
     let gpu_tex_coord_attrib_location = 2;
+	let gpu_b_color_attrib_location = 3;
 
     // tworzenie sampler-a
     var linear_sampler = gl.createSampler();
@@ -227,39 +258,55 @@ function init()
         // tworzenie mipmap
         gl.generateMipmap(gl.TEXTURE_2D);
     });
+	
+	bullet_texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, bullet_texture);
+    // wypelnianie tekstury jednym pikselem
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(255, 255, 255, 255));
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    // ładowanie obrazka (asynchronicznie)
+    var bullet_image = new Image();
+    bullet_image.src = "images/bullet_tex.png";
+    bullet_image.addEventListener('load', function(){
+        gl.bindTexture(gl.TEXTURE_2D, bullet_texture);
+        // ladowanie danych z obrazka do tekstury
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bullet_image);
+        // tworzenie mipmap
+        gl.generateMipmap(gl.TEXTURE_2D);
+    });
 
     // PYRAMID VERTICES
     var vertices = fillVerticesWithNormals([
 					//FRONT
-					-0.5, 0.0, -0.5,	0.0, 0.0,
-					0.0, 1.0, 0.0, 		0.5, 1.0,
-                    0.5, 0.0, -0.5,		1.0, 0.0,
+					-0.5, 0.0, -0.5,	0.0, 0.0, 0.0,
+					0.0, 1.0, 0.0, 		0.5, 1.0, 0.0,
+                    0.5, 0.0, -0.5,		1.0, 0.0, 0.0,
 					
 					//LEFT
-					-0.5, 0.0, 0.5,		0.0, 0.0,
-					0.0, 1.0, 0.0,		0.5, 1.0,
-                    -0.5, 0.0, -0.5,	1.0, 0.0,
+					-0.5, 0.0, 0.5,		0.0, 0.0, 0.0,
+					0.0, 1.0, 0.0,		0.5, 1.0, 0.0,
+                    -0.5, 0.0, -0.5,	1.0, 0.0, 0.0,
 
 					//RIGHT
-					0.5, 0.0, 0.5,		0.0, 0.0,
-                    0.5, 0.0, -0.5,		1.0, 0.0,
-                    0.0, 1.0, 0.0,		0.5, 1.0,
+					0.5, 0.0, 0.5,		0.0, 0.0, 0.0,
+                    0.5, 0.0, -0.5,		1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,		0.5, 1.0, 0.0,
 
 					//BACK
-					-0.5, 0.0, 0.5,		0.0, 0.0,
-                    0.5, 0.0, 0.5,		1.0, 0.0,
-                    0.0, 1.0, 0.0,		0.5, 1.0,
+					-0.5, 0.0, 0.5,		0.0, 0.0, 0.0,
+                    0.5, 0.0, 0.5,		1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,		0.5, 1.0, 0.0,
 					
 					//FLOOR
-					-0.5, 0.0, -0.5,	0.0, 0.0,
-					0.5, 0.0, -0.5,		1.0, 0.0,
-					-0.5, 0.0, 0.5,		0.0, 1.0,
+					-0.5, 0.0, -0.5,	0.0, 0.0, 0.0,
+					0.5, 0.0, -0.5,		1.0, 0.0, 0.0,
+					-0.5, 0.0, 0.5,		0.0, 1.0, 0.0,
 					
 					
-					-0.5, 0.0, 0.5,		0.0, 1.0,
-					0.5, 0.0, -0.5,		1.0, 0.0,
-					0.5, 0.0, 0.5,		1.0, 1.0
-                    ], 2);
+					-0.5, 0.0, 0.5,		0.0, 1.0, 0.0,
+					0.5, 0.0, -0.5,		1.0, 0.0, 0.0,
+					0.5, 0.0, 0.5,		1.0, 1.0, 0.0
+                    ], 3);
 					
     // tworzenie VBO
     var vbo = gl.createBuffer();
@@ -289,11 +336,13 @@ function init()
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
     gl.enableVertexAttribArray(gpu_positions_attrib_location);
-    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 0);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
     gl.enableVertexAttribArray(gpu_normals_attrib_location);
-    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 3*4);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
     gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
-    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 8*4, 6*4);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
@@ -301,22 +350,22 @@ function init()
 	//----------------------- OBJECTS IN POINT_LIGHT SOURCE
     var lights_vertices = fillVerticesWithNormals([
 					//POINT LIGHT
-					-0.2, 0.0, -0.1,	0.0, 0.0,
-					0.0, 0.4, 0.0,		0.0, 0.0,
-					0.2, 0.0, -0.1,		0.0, 0.0,
+					-0.2, 0.0, -0.1,	1.0, 0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 1.0, 0.0,
+					0.2, 0.0, -0.1,		0.0, 0.0, 1.0,
 					
-					0.2, 0.0, -0.1,		0.0, 0.0,
-					0.0, 0.4, 0.0,		0.0, 0.0,
-					0.0, 0.0, 0.2,		0.0, 0.0,
+					0.2, 0.0, -0.1,		1.0, 0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 1.0, 0.0,
+					0.0, 0.0, 0.2,		0.0, 0.0, 1.0,
 					
-					0.0, 0.0, 0.2,		0.0, 0.0,
-					0.0, 0.4, 0.0,		0.0, 0.0,
-					-0.2, 0.0, -0.1,	0.0, 0.0,
+					0.0, 0.0, 0.2,		1.0, 0.0, 0.0,
+					0.0, 0.4, 0.0,		0.0, 1.0, 0.0,
+					-0.2, 0.0, -0.1,	0.0, 0.0, 1.0,
 					
-					-0.2, 0.0, -0.1,	0.0, 0.0,
-					0.2, 0.0, -0.1,		0.0, 0.0,
-					0.0, 0.0, 0.2,		0.0, 0.0
-                    ], 2);
+					-0.2, 0.0, -0.1,	1.0, 0.0, 0.0,
+					0.2, 0.0, -0.1,		0.0, 1.0, 0.0,
+					0.0, 0.0, 0.2,		0.0, 0.0, 1.0
+                    ], 3);
 					
     // tworzenie VBO
     var lights_vbo = gl.createBuffer();
@@ -344,11 +393,13 @@ function init()
     gl.bindBuffer(gl.ARRAY_BUFFER, lights_vbo);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lights_index_buffer);
     gl.enableVertexAttribArray(gpu_positions_attrib_location);
-    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 0);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
     gl.enableVertexAttribArray(gpu_normals_attrib_location);
-    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 3*4);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
     gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
-    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 8*4, 6*4);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
@@ -356,13 +407,13 @@ function init()
 	//------------------------ BACKGROUND ----------------------
 	
 	var bg_vertices = fillVerticesWithNormals([
-					-10.0, 0.0, 10.0,	0.0, 0.0,
-					10.0, 0.0, 10.0,	1.0, 0.0,
-					-10.0, 0.0, -10.0,	0.0, 1.0,
-					-10.0, 0.0, -10.0,	0.0, 1.0,
-					10.0, 0.0, 10.0,	1.0, 0.0,
-					10.0, 0.0, -10.0,	1.0, 1.0
-                    ], 2);
+					-10.0, 0.0, 10.0,	0.0, 0.0, 0.0,
+					10.0, 0.0, 10.0,	1.0, 0.0, 0.0,
+					-10.0, 0.0, -10.0,	0.0, 1.0, 0.0,
+					-10.0, 0.0, -10.0,	0.0, 1.0, 0.0,
+					10.0, 0.0, 10.0,	1.0, 0.0, 0.0,
+					10.0, 0.0, -10.0,	1.0, 1.0, 0.0
+                    ], 3);
 					
     // tworzenie VBO
     var bg_vbo = gl.createBuffer();
@@ -388,11 +439,132 @@ function init()
     gl.bindBuffer(gl.ARRAY_BUFFER, bg_vbo);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bg_index_buffer);
     gl.enableVertexAttribArray(gpu_positions_attrib_location);
-    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 0);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
     gl.enableVertexAttribArray(gpu_normals_attrib_location);
-    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 8*4, 3*4);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
     gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
-    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 8*4, 6*4);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	
+	//PRZYKŁADOWE PARSOWANIE OBJ
+	
+	// ŚWINIA OBJ
+	var mesh = new obj_loader.Mesh( document.getElementById( 'pigObj' ).innerHTML );
+	
+	var obj_pig_vertices = parseObjMeshToFloat32(mesh);
+					
+    // tworzenie VBO
+    var obj_pig_vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_pig_vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, obj_pig_vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // dane o indeksach
+    var obj_pig_indices = new Uint16Array(mesh.indices);
+	obj_pig_indices_length = obj_pig_indices.length;
+
+    // tworzenie bufora indeksow
+    var obj_pig_index_buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_pig_index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, obj_pig_indices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+    // tworzenie VAO
+    obj_pig_vao = gl.createVertexArray();
+    gl.bindVertexArray(obj_pig_vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_pig_vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_pig_index_buffer);
+    gl.enableVertexAttribArray(gpu_positions_attrib_location);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
+    gl.enableVertexAttribArray(gpu_normals_attrib_location);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
+    gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	
+	//------------------------ ROBOT OBJ -------------------------
+		// ŚWINIA OBJ
+	var mesh = new obj_loader.Mesh( document.getElementById( 'robotObj' ).innerHTML );
+	
+	var obj_robot_vertices = parseObjMeshToFloat32(mesh);
+					
+    // tworzenie VBO
+    var obj_robot_vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_robot_vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, obj_robot_vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // dane o indeksach
+    var obj_robot_indices = new Uint16Array(mesh.indices);
+	obj_robot_indices_length = obj_robot_indices.length;
+
+    // tworzenie bufora indeksow
+    var obj_robot_index_buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_robot_index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, obj_robot_indices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+    // tworzenie VAO
+    obj_robot_vao = gl.createVertexArray();
+    gl.bindVertexArray(obj_robot_vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_robot_vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_robot_index_buffer);
+    gl.enableVertexAttribArray(gpu_positions_attrib_location);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
+    gl.enableVertexAttribArray(gpu_normals_attrib_location);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
+    gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	
+	//------------------------- BULLETS --------------------------
+	
+	// BULLET OBJ
+	var mesh = new obj_loader.Mesh( document.getElementById( 'bulletObj' ).innerHTML );
+	
+	var obj_bullet_vertices = parseObjMeshToFloat32(mesh);
+					
+    // tworzenie VBO
+    var obj_bullet_vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_bullet_vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, obj_bullet_vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // dane o indeksach
+    var obj_bullet_indices = new Uint16Array(mesh.indices);
+	obj_bullet_indices_length = obj_bullet_indices.length;
+
+    // tworzenie bufora indeksow
+    var obj_bullet_index_buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_bullet_index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, obj_bullet_indices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+    // tworzenie VAO
+    obj_bullet_vao = gl.createVertexArray();
+    gl.bindVertexArray(obj_bullet_vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj_bullet_vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj_bullet_index_buffer);
+    gl.enableVertexAttribArray(gpu_positions_attrib_location);
+    gl.vertexAttribPointer(gpu_positions_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 0);
+    gl.enableVertexAttribArray(gpu_normals_attrib_location);
+    gl.vertexAttribPointer(gpu_normals_attrib_location, 3, gl.FLOAT, gl.FALSE, 9*4, 3*4);
+    gl.enableVertexAttribArray(gpu_tex_coord_attrib_location);
+    gl.vertexAttribPointer(gpu_tex_coord_attrib_location, 2, gl.FLOAT, gl.FALSE, 9*4, 6*4);
+	gl.enableVertexAttribArray(gpu_b_color_attrib_location);
+    gl.vertexAttribPointer(gpu_b_color_attrib_location, 1, gl.FLOAT, gl.FALSE, 9*4, 8*4);
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
@@ -422,6 +594,14 @@ function init()
 	
 	let spot_light_data = new Float32Array([
 			1.0, 1.0, 1.0, Math.cos(0.60), 0.0, 0.0, -1.0, 1.0
+	]);
+	
+	let need_texture_data = new Float32Array([
+				1.0, 0,0, 0.0, 0.0,		 0.0, 0.0, 0.0,		0.0, 0.0
+	]);
+	
+	let direct_light_data = new Float32Array([
+				0.0, -10.0, 0.0, -1.0
 	]);
 
     // tworzenie UBO
@@ -454,21 +634,30 @@ function init()
     gl.bindBuffer(gl.UNIFORM_BUFFER, spot_light_ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, spot_light_data, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//-------------------------------------
+	need_texture_ubo = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+    gl.bufferData(gl.UNIFORM_BUFFER, need_texture_data, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+	//-------------------------------------
+	direct_light_ubo = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, direct_light_ubo);
+    gl.bufferData(gl.UNIFORM_BUFFER, direct_light_data, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
 	
 
     // ustawienia danych dla funkcji draw*
     gl.useProgram(program);
-	
     gl.bindSampler(0, linear_sampler);
-    //gl.activeTexture(gl.TEXTURE0);
-	//gl.bindTexture(gl.TEXTURE_2D, texture);
-	//gl.bindTexture(gl.TEXTURE_2D, bg_texture);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, matrices_ubb, matrices_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, cam_info_ubb, cam_info_ubo);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, material_ubb, material_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, lights_ubb, lights_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, ambient_light_ubb, ambient_light_ubo);
 	gl.bindBufferBase(gl.UNIFORM_BUFFER, spot_light_ubb, spot_light_ubo);
+	gl.bindBufferBase(gl.UNIFORM_BUFFER, need_texture_ubb, need_texture_ubo);
+	gl.bindBufferBase(gl.UNIFORM_BUFFER, direct_light_ubb, direct_light_ubo);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
 	
 	document.getElementById("glcanvas").addEventListener("click", function(event)
 	{
@@ -522,8 +711,8 @@ function init()
 var pyr1_rot = Math.PI/0.1;
 var rotationSpeed = 0.02;
 var minSpeed = 0.01;
-var maxSpeed = 0.2;
-var intensivity = 0.4;
+var maxSpeed = 0.4;
+var intensivity = 0.7;
 var baseRot = Math.PI/2;
 var bulletsToDraw = [];
 
@@ -539,7 +728,6 @@ function draw()
 	var view_matrix = mat4.create();
 	var mvp_to_copy = mat4.create();
 	
-	viewerAt = new Float32Array([0, 5, 20]);
 	viewerAt = new Float32Array([EyeX.value/10, EyeY.value/10, EyeZ.value/10]);
 	var lookingAt = new Float32Array([LookX.value/10, LookY.value/10, LookZ.value/10]);
 	
@@ -570,40 +758,72 @@ function draw()
 	var model_matrix = mat4.create();
 	var mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
-	
-	
-	gl.bindTexture(gl.TEXTURE_2D, texture);
 
+	//TEXTURE EXAMPLES
+	//normal texture
+	mat4.translate(model_matrix, model_matrix, new Float32Array([3.5, 0.0, -8.5]));
+	mat4.scale(model_matrix, model_matrix, new Float32Array([3.0, 3.0, 3.0]));
 
+	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 18, gl.UNSIGNED_SHORT, 0);
+	
+	//procedural texture
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([1.0, 1.0, 0.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+		
+	mat4.translate(model_matrix, model_matrix, new Float32Array([-3.5, 0.0, -8.5]));
+	mat4.scale(model_matrix, model_matrix, new Float32Array([3.0, 3.0, 3.0]));
+
+	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 18, gl.UNSIGNED_SHORT, 0);
+	
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 4, new Float32Array([0.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
 
 	//generowanie pocisków
-	var needGenBullet = ((Math.random() + intensivity) >= 1);
-	if (needGenBullet)
+	var needGenBullet = ((Math.random() + intensivity));
+	if (needGenBullet >= 1.0)
 	{
-		var direction = ([Math.floor(Math.random() * 2 + 1)] == 1) ? Direction.LEFT_TO_RIGHT : Direction.RIGHT_TO_LEFT;
-		var x;
-		var xSpeed;
-		var baseR;
-		
-		if (direction == Direction.LEFT_TO_RIGHT)
+		for (var i = 0; i < Math.floor(needGenBullet); i++)
 		{
-			x = -11.0;
-			xSpeed = (Math.random() * maxSpeed + minSpeed);
-			baseR = -baseRot;
+			
+			var direction = ([Math.floor(Math.random() * 2 + 1)] == 1) ? Direction.LEFT_TO_RIGHT : Direction.RIGHT_TO_LEFT;
+			var x;
+			var xSpeed;
+			var baseR;
+			
+			if (direction == Direction.LEFT_TO_RIGHT)
+			{
+				x = -11.0;
+				xSpeed = (Math.random() * maxSpeed + minSpeed);
+				baseR = -baseRot;
+			}
+			else if (direction == Direction.RIGHT_TO_LEFT)
+			{
+				x = 11.0;
+				xSpeed = (Math.random() * -maxSpeed - minSpeed);
+				baseR = baseRot;
+			}
+			
+			var y = Math.random() * 20;
+			var z = (Math.random() * 20) - 10;
+			var rSpeed = (Math.random() * 0.1 + 0.01);
+			
+			bulletsToDraw.push(new Bullet(vec3.fromValues(x,y,z), direction, xSpeed, rSpeed, baseR, Math.PI/0.1));
 		}
-		else if (direction == Direction.RIGHT_TO_LEFT)
-		{
-			x = 11.0;
-			xSpeed = (Math.random() * -maxSpeed - minSpeed);
-			baseR = baseRot;
-		}
-		
-		var y = Math.random() * 20;
-		var z = (Math.random() * 20) - 10;
-		var rSpeed = (Math.random() * 0.1 + 0.01);
-		
-		bulletsToDraw.push(new Bullet(vec3.fromValues(x,y,z), direction, xSpeed, rSpeed, baseR, Math.PI/0.1));
 	}
+	
+	gl.bindVertexArray(obj_bullet_vao);
+	gl.bindTexture(gl.TEXTURE_2D, bullet_texture);
 	
 	//rysowanie pocisków
 	var bulletsToDelete = [];
@@ -618,21 +838,22 @@ function draw()
 		bullet.pos[0] += bullet.xSpeed;
 		bullet.r += bullet.rSpeed;
 		
+		
 		mat4.translate(model_matrix, model_matrix, new Float32Array([bullet.pos[0], bullet.pos[1], bullet.pos[2]]));
 		mat4.rotateX(model_matrix, model_matrix, bullet.r);
 		mat4.rotateZ(model_matrix, model_matrix, bullet.baseR);
+		mat4.scale(model_matrix, model_matrix, new Float32Array([0.1, 0.1, 0.1]));
 		
 		
 		mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 		gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
-		gl.drawElements(gl.TRIANGLES, 18, gl.UNSIGNED_SHORT, 0);
+		gl.drawElements(gl.TRIANGLES, obj_bullet_indices_length, gl.UNSIGNED_SHORT, 0);
 		
 		if ((bullet.pos[0] < -11.0) || (bullet.pos[0] > 11.0))
 			{
 				bulletsToDelete.push(i);
 			}
 	}
-	
 	//usuwanie pocisków poza limitem
 	bulletsToDelete.sort(compareNum);
 	for (var i = 0; i < bulletsToDelete.length; i++)
@@ -642,8 +863,27 @@ function draw()
 		bulletsToDraw.splice(index, 1);	
 	}
 	
+	
+	//jeden obiekt pocisku
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.translate(model_matrix, model_matrix, new Float32Array([3.0, 0.5, 3.0]));
+	mat4.rotateY(model_matrix, model_matrix, degToRad(-90.0));
+	mat4.rotateZ(model_matrix, model_matrix, degToRad(90.0));
+	
+	mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, obj_bullet_indices_length, gl.UNSIGNED_SHORT, 0);
 
+	gl.bindTexture(gl.TEXTURE_2D, null);
+	
 	//rysowanie "modeli" świateł punktowych
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
 	gl.bindVertexArray(lights_vao);
 	
 	//zielony
@@ -668,6 +908,23 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 	
+	//piramida kolorowa
+
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.translate(model_matrix, model_matrix, new Float32Array([0.0, 0.0, -9.0]));
+	mat4.scale(model_matrix, model_matrix, new Float32Array([10.0, 10.0, 10.0]));
+	
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
+	
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([1.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
 	//BACKGROUND floor
 	gl.bindVertexArray(bg_vao);
 	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
@@ -687,7 +944,6 @@ function draw()
 	mvp_matrix = mat4.create();
 	mat4.copy(mvp_matrix, mvp_to_copy);
 	
-	//mat4.translate(model_matrix, model_matrix, new Float32Array(0.0, 0.0, -10.0));
 	mat4.translate(model_matrix, model_matrix, new Float32Array([0.0, 10.0, -10.0]));
 	mat4.rotateX(model_matrix, model_matrix, degToRad(90));
 	
@@ -724,6 +980,10 @@ function draw()
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 	
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 4, new Float32Array([1.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
 	//BACKGROUND ceil
 	gl.bindTexture(gl.TEXTURE_2D, bg_texture);
 	
@@ -737,6 +997,48 @@ function draw()
     mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
 	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
 	gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+	//ŚWINIA OBJ
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([0.0, 0.0, 1.0, 0.0, 1.0, 0.8, 1.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
+	gl.bindTexture(gl.TEXTURE_2D, null);
+	
+	gl.bindVertexArray(obj_pig_vao);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.translate(model_matrix, model_matrix, new Float32Array([-7.0, 0.0, -6.0]));
+	mat4.scale(model_matrix, model_matrix, new Float32Array([3.0, 3.0, 3.0]));
+
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, obj_pig_indices_length, gl.UNSIGNED_SHORT, 0);
+	
+	//ROBOT OBJ
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
+	
+	gl.bindVertexArray(obj_robot_vao);
+	
+	model_matrix = mat4.create();	
+	mvp_matrix = mat4.create();
+	mat4.copy(mvp_matrix, mvp_to_copy);
+	
+	mat4.translate(model_matrix, model_matrix, new Float32Array([7.0, 0.0, -6.0]));
+	mat4.scale(model_matrix, model_matrix, new Float32Array([0.3, 0.3, 0.3]));
+
+    mat4.multiply(mvp_matrix, mvp_matrix, model_matrix);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, Float32Concat(mvp_matrix, model_matrix), 0);
+	gl.drawElements(gl.TRIANGLES, obj_robot_indices_length, gl.UNSIGNED_SHORT, 0);
+	
+	gl.bindBuffer(gl.UNIFORM_BUFFER, need_texture_ubo);
+	gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([1.0, 0.0, 0.0]), 0);
+	gl.bindBuffer(gl.UNIFORM_BUFFER, matrices_ubo);
 	
 	pyr1_rot += rotationSpeed;
 	
@@ -786,9 +1088,11 @@ var vs_source = "#version 300 es\n" +
     "layout(location = 0) in vec3 vertex_position;\n" +
     "layout(location = 1) in vec3 vertex_normal;\n" +
     "layout(location = 2) in vec2 vertex_tex_coord;\n" +
+	"layout(location = 3) in float b_col;\n" +
     "out vec3 position_ws;\n" +
     "out vec3 normal_ws;\n" +
     "out vec2 tex_coord;\n" +
+	"out float b_color;\n" +
 	
     "layout(std140) uniform Matrices\n" +
     "{\n" +
@@ -803,18 +1107,8 @@ var vs_source = "#version 300 es\n" +
         "position_ws = tmp_position_ws.xyz/tmp_position_ws.w;\n" +
         "normal_ws = mat3x3(matrices.model_matrix)*vertex_normal;\n" +
         "tex_coord = vertex_tex_coord;\n" +
+		"b_color = b_col;\n" +
     "}\n";
-
-
-//L=pozycja pointlaita odjac pozycja fragmentu, dla ktorego liczymy oswietlenie, znormalizowane wektory
-//wektor normalny prostopadly do powierzchni, vertex_normal
-//wektor v wskzaujacy w strone kamery, polozenie kamery uniform odjac 
-//wektor R wektor L odbity wzgledem normalnej reflect funkcja
-//oświetlenie dyfuzyjne, nie zalezy od polozenia obserwatora
-//oswietlenie specular, zalezy od polozenia obserwatora, odbicia, spec power - wielkosc odbicia, spec intensity - intensywnosc
-//jeden przez kwadrat odleglosci od swiatla
-// aten 1 - odlelgosc od swiatla/ pointlight radius
-
 
 // fragment shader (GLSL)
 var fs_source = "#version 300 es\n" +
@@ -824,6 +1118,7 @@ var fs_source = "#version 300 es\n" +
     "in vec3 position_ws;\n" +
     "in vec3 normal_ws;\n" +
     "in vec2 tex_coord;\n" +
+	"in float b_color;\n" +
     "out vec4 vFragColor;\n" +
 
 	"struct Light\n" +
@@ -866,14 +1161,21 @@ var fs_source = "#version 300 es\n" +
 	   "float shiness;\n" +
     "} spot_light;\n" +
 	
+	"layout(std140) uniform NeedTexture\n" +
+    "{\n" +
+		"float needTexture;\n" +
+		"float isProcedural;\n" +
+		"float isOneColor;" +
+		"vec3 color;" +
+    "} need_texture;\n" +
+	
+	"layout(std140) uniform DirectLight\n" +
+    "{\n" +
+		"vec3 reverseLightDirection;" +
+    "} direct_light;\n" +
+	
     "void main()\n" +
     "{\n" +
-		"if (tex_coord == vec2(0.0, 0.0))\n" +
-		"{\n" +
-			"vFragColor = vec4(1.0, 1.0, 0.0, 1.0);" +
-			"return;\n" +
-		"}\n" +
-			
 		"vec3 diffuse = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 specular = vec3(0.f, 0.f, 0.f);\n" +
 		"vec3 N = normalize(normal_ws);\n" +
@@ -899,6 +1201,9 @@ var fs_source = "#version 300 es\n" +
 		"vFragColor *= light;\n" +
 		"vFragColor *= spot_spec;\n" +
 		
+		//"light = dot(N, normalize(direct_light.reverseLightDirection));\n" +
+		//"vFragColor *= light;\n" +
+		
 		"for (int i = 0; i < int(lights.size); i++)\n" +
 		"{\n" +
 		
@@ -907,7 +1212,6 @@ var fs_source = "#version 300 es\n" +
 
 			"if (surf_to_light_distance < lights.light[i].r)\n" +
 			"{\n" +
-				
 				"float intensity = 1.f - surf_to_light_distance/lights.light[i].r;\n" +
 				"intensity *= intensity;\n" +
 				"vec3 L = normalize(surf_to_light);\n" +
@@ -918,20 +1222,37 @@ var fs_source = "#version 300 es\n" +
 				"vec3 R = normalize(reflect(-L, N));\n" +
 				"float spec_angle = max(dot(R, V), 0.f);\n" +
 				"specular += pow(spec_angle, material.specular_power) * lights.light[i].color * intensity;\n" +
-		
-
 			"}\n" +
-		//"vec3 R = (L+V)/ normalize(L+V);\n" +
-		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
 		"}\n" +
-	  
-		"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		
+		"if (need_texture.needTexture == 1.0)\n" +
+			"if (need_texture.isProcedural == 1.0)\n" +
+			"{\n" +
+				"float chessboard_color_multipler = 0.f;\n" +
+				"vec2 coord_step_result = step(tex_coord, vec2(0.5, 0.5f));\n" + 
+				"chessboard_color_multipler = coord_step_result.x;\n" +
+				"chessboard_color_multipler -= coord_step_result.y;\n" +
+				"chessboard_color_multipler = abs(chessboard_color_multipler);\n" +
+				"chessboard_color_multipler += 0.25;\n" +
+				"vec3 result = vec3(chessboard_color_multipler);\n" +
+				"result *= vec3(tex_coord, b_color);\n" +
+				"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * result.rgb + specular), 0.f, 1.f), 1.f);\n" +
+			"}\n" +
+			"else\n" +
+				"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * texture(color_tex, tex_coord).rgb + specular), 0.f, 1.f), 1.f);\n" +
+		"else if (need_texture.isOneColor == 1.0)\n" +
+			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * need_texture.color.rgb + specular), 0.f, 1.f), 1.f);\n" +
+		"else\n" +
+			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * vec3(tex_coord, b_color).rgb + specular), 0.f, 1.f), 1.f);\n" +
     "}\n";
 
 main();
 
 /*
- * 
+ * 		//"vec3 R = (L+V)/ normalize(L+V);\n" +
+		//"vFragColor = vec4((N + 1.)/2., 1.);\n" +
+ 
+ 
  *  V = pozycja kamery - pozycja na powierzchni + normalizacja
  *  R = gl.reflect + normalizacja
  * 
@@ -964,5 +1285,12 @@ main();
     "vFragColor = vec4(result, 1.0);\n" +
 	"vFragColor.rgb *= light * point_light.color * atten;\n" +
     
- * 
+ * //L=pozycja pointlaita odjac pozycja fragmentu, dla ktorego liczymy oswietlenie, znormalizowane wektory
+//wektor normalny prostopadly do powierzchni, vertex_normal
+//wektor v wskzaujacy w strone kamery, polozenie kamery uniform odjac 
+//wektor R wektor L odbity wzgledem normalnej reflect funkcja
+//oświetlenie dyfuzyjne, nie zalezy od polozenia obserwatora
+//oswietlenie specular, zalezy od polozenia obserwatora, odbicia, spec power - wielkosc odbicia, spec intensity - intensywnosc
+//jeden przez kwadrat odleglosci od swiatla
+// aten 1 - odlelgosc od swiatla/ pointlight radius
  */
