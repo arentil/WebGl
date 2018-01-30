@@ -601,7 +601,7 @@ function init()
 	]);
 	
 	let direct_light_data = new Float32Array([
-				0.0, 10.0, 0.0, 	-1.0,	 0.5, 0.5, 0.5,	 	0.0
+				0.0, -10.0, 0.0, 	-1.0,	 0.5, 0.5, 0.5,	 	0.0
 	]);
 
     // tworzenie UBO
@@ -1185,7 +1185,7 @@ var fs_source = "#version 300 es\n" +
 		"vec3 surfToLight = normalize(additional_data.cam_pos_ws - position_ws);\n" +
 		"vec3 surfToView = normalize(additional_data.cam_pos_ws - position_ws);\n" +
 		"vec3 halfVector = normalize(surfToLight + surfToView);\n" +
-		
+
 		"float dotFromDirection = dot(surfToLight, -spot_light.direction);\n" +
 		"float inLight = smoothstep(spot_light.outerLimit, spot_light.innerLimit, dotFromDirection);\n" +
 		"float light = inLight * dot(N, surfToLight);\n" +
@@ -1235,10 +1235,9 @@ var fs_source = "#version 300 es\n" +
 			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * need_texture.color.rgb + specular), 0.f, 1.f), 1.f);\n" +
 		"else\n" +
 			"vFragColor += vec4(clamp((clamp(diffuse + ambient_light.color, 0.f, 1.f) * vec3(tex_coord, b_color).rgb + specular), 0.f, 1.f), 1.f);\n" +
-		
-		"light = dot(N, normalize(direct_light.reverseLightDirection));\n" +
-		"vFragColor += light * vec4(direct_light.color, 1.0);\n" +
-		
+			
+					"float dirlight = dot(N, normalize(direct_light.reverseLightDirection));\n" +
+		"vFragColor += dirlight * vec4(direct_light.color, 1.0);\n" +
     "}\n";
 
 main();
